@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-import { generateResume, analyzePersonality } from '../services/geminiService';
-import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw } from 'lucide-react';
+import { generateResume, analyzePersonality, summarizeCareerProfile } from '../services/geminiService';
+import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, QrCode, Image as ImageIcon, X } from 'lucide-react';
 
 interface ProfileProps {
   profile: UserProfile | null;
@@ -35,7 +36,12 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
       skills: [],
       history: '',
       resumeMarkdown: '',
-      personalityAnalysis: ''
+      personalityAnalysis: '',
+      careerStrengths: '',
+      interests: '',
+      values: '',
+      environment: '',
+      careerSummary: ''
   });
   
   // Sync state with props when profile loads or updates
@@ -52,7 +58,9 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
 
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [isAnalyzingPersonality, setIsAnalyzingPersonality] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (field: keyof UserProfile, value: string) => {
@@ -94,10 +102,24 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
       onUpdateProfile(updatedProfile);
     } catch (error) {
       console.error(error);
-      alert('性格分析に失敗しました。インターネット接続やAPIキーを確認してください。');
+      alert('性格分析に失敗しました。');
     } finally {
       setIsAnalyzingPersonality(false);
     }
+  };
+
+  const handleSummarizeCareer = async () => {
+      setIsSummarizing(true);
+      try {
+          const summary = await summarizeCareerProfile(formData);
+          const updatedProfile = { ...formData, careerSummary: summary };
+          setFormData(updatedProfile);
+          onUpdateProfile(updatedProfile);
+      } catch (error) {
+          alert('キャリア要約の生成に失敗しました。');
+      } finally {
+          setIsSummarizing(false);
+      }
   };
 
   const handleGenerateResume = async () => {
@@ -142,62 +164,178 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
       reader.onload = (event) => {
           try {
               const json = event.target?.result as string;
-              // Basic validation
               const parsed = JSON.parse(json);
               if (!parsed.user) throw new Error("Invalid Data Format");
               
               if (window.confirm('現在のデータを上書きして、バックアップを復元しますか？')) {
                   localStorage.setItem('tarushiru_data', json);
-                  window.location.reload(); // Reload to apply changes safely
+                  window.location.reload();
               }
           } catch (err) {
               alert('ファイルの読み込みに失敗しました。データ形式が正しくない可能性があります。');
           }
       };
       reader.readAsText(file);
-      // Reset input
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Image Generation (Canvas)
+  const handleGenerateImage = () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Canvas Settings
+    canvas.width = 800;
+    canvas.height = 1000;
+    
+    // Background
+    const gradient = ctx.createLinearGradient(0, 0, 0, 1000);
+    gradient.addColorStop(0, '#102a43');
+    gradient.addColorStop(1, '#243b53');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 800, 1000);
+
+    // Decorative Elements
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(700, 100, 200, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Text Settings
+    ctx.textAlign = 'center';
+    
+    // Title
+    ctx.fillStyle = '#d9e2ec';
+    ctx.font = '24px "Zen Kaku Gothic New", sans-serif';
+    ctx.fillText('TARUSHIRU JOURNAL', 400, 80);
+
+    // Name
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 48px "Zen Kaku Gothic New", sans-serif';
+    ctx.fillText(formData.name || 'No Name', 400, 180);
+
+    // MBTI Container
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.roundRect(300, 220, 200, 80, 20);
+    ctx.fill();
+    ctx.fillStyle = '#f0f4f8';
+    ctx.font = 'bold 40px "Zen Kaku Gothic New", sans-serif';
+    ctx.fillText(formData.mbti || 'MBTI', 400, 275);
+
+    // Strengths Title
+    ctx.fillStyle = '#9fb3c8';
+    ctx.font = '24px "Zen Kaku Gothic New", sans-serif';
+    ctx.fillText('Top 5 Strengths', 400, 380);
+
+    // Strengths List
+    ctx.fillStyle = 'white';
+    ctx.font = '32px "Zen Kaku Gothic New", sans-serif';
+    const strengths = formData.strengths.filter(s => s).slice(0, 5);
+    strengths.forEach((s, i) => {
+        ctx.fillText(`${i + 1}. ${s}`, 400, 440 + (i * 50));
+    });
+
+    // Career Axis (if exists)
+    if (formData.interests || formData.values) {
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.roundRect(100, 700, 600, 200, 20);
+        ctx.fill();
+        
+        ctx.fillStyle = '#9fb3c8';
+        ctx.font = '20px "Zen Kaku Gothic New", sans-serif';
+        ctx.fillText('Values & Interests', 400, 740);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = '24px "Zen Kaku Gothic New", sans-serif';
+        // Wrap text logic simplified
+        const text = (formData.values || formData.interests || '').replace(/\n/g, ' ').substring(0, 60) + '...';
+        ctx.fillText(text, 400, 800);
+    }
+
+    // Footer
+    ctx.fillStyle = '#486581';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Generated by TARUSHIRU', 400, 950);
+
+    // Download
+    const link = document.createElement('a');
+    link.download = `tarushiru_profile_${new Date().getTime()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  // QR Data (Simulate data string)
+  const qrData = `TARUSHIRU_PROFILE\nName:${formData.name}\nMBTI:${formData.mbti}\nStrengths:${formData.strengths.join(',')}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+
   return (
-    <div className="space-y-6 pb-24">
-       <header className="mb-6 flex justify-between items-end">
+    <div className="space-y-6 pb-24 relative">
+       <header className="mb-6 flex justify-between items-center">
         <div>
             <h2 className="text-2xl font-bold text-navy-900">Profile</h2>
-            <p className="text-sm text-gray-500">あなたのキャリア資産とアイデンティティ。</p>
+            <p className="text-sm text-gray-500">あなたのキャリア資産。</p>
         </div>
         
-        {/* Backup Controls */}
-        <div className="flex space-x-2">
-            <button 
-                onClick={handleExportData}
-                className="p-2 bg-white border border-gray-200 rounded-lg text-navy-600 hover:bg-navy-50 hover:text-navy-900 transition-colors"
-                title="データをファイルに保存 (バックアップ)"
-            >
-                <Download size={18} />
-            </button>
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="p-2 bg-white border border-gray-200 rounded-lg text-navy-600 hover:bg-navy-50 hover:text-navy-900 transition-colors"
-                title="ファイルを読み込んで復元"
-            >
-                <Upload size={18} />
-            </button>
-            <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleImportData} 
-                accept=".json" 
-                className="hidden" 
-            />
-        </div>
+        {/* Share Button */}
+        <button 
+            onClick={() => setShowShareModal(true)}
+            className="flex items-center space-x-2 bg-navy-900 text-white px-4 py-2 rounded-xl shadow-md hover:bg-navy-800 transition-all text-xs font-bold"
+        >
+            <Share2 size={16} />
+            <span>シェア / 出力</span>
+        </button>
       </header>
 
-      {/* Basic Info Form */}
+      {/* Share Modal */}
+      {showShareModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-navy-50">
+                      <h3 className="font-bold text-navy-900 flex items-center">
+                          <Share2 size={16} className="mr-2"/>
+                          プロフィールを共有
+                      </h3>
+                      <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-navy-900">
+                          <X size={20} />
+                      </button>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                      {/* QR Section */}
+                      <div className="flex flex-col items-center space-y-3">
+                          <div className="bg-white p-4 rounded-xl border-2 border-navy-100 shadow-sm">
+                              <img src={qrUrl} alt="QR Code" className="w-40 h-40 object-contain" />
+                          </div>
+                          <div className="text-center">
+                              <p className="text-xs font-bold text-navy-900">QRコードを表示</p>
+                              <p className="text-[10px] text-gray-400">読み取るとあなたの基本データが表示されます</p>
+                          </div>
+                      </div>
+
+                      <div className="border-t border-gray-100 pt-6">
+                          <button 
+                             onClick={handleGenerateImage}
+                             className="w-full bg-navy-900 text-white py-3 rounded-xl font-bold flex items-center justify-center space-x-2 hover:bg-navy-800 transition-colors shadow-lg"
+                          >
+                              <ImageIcon size={18} />
+                              <span>プロフィール画像を生成・保存</span>
+                          </button>
+                          <p className="text-[10px] text-gray-400 text-center mt-2">
+                              SNS等でシェアできるカード画像を生成します
+                          </p>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* 1. Basic Info & Traits */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-6">
         <h3 className="text-sm font-bold text-navy-900 flex items-center space-x-2 border-b border-gray-100 pb-2">
             <User size={16} />
-            <span>基本情報と性格特性</span>
+            <span>基本情報と特性 (Soft)</span>
         </h3>
         
         <div className="space-y-4">
@@ -260,10 +398,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
             {/* Auto Personality Analysis */}
             {(formData.mbti || formData.strengths.some(s => s)) && (
                 <div className="bg-gradient-to-br from-white to-navy-50 p-4 rounded-xl border border-navy-100 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                        <Sparkles size={60} />
-                    </div>
-                    <div className="flex justify-between items-center mb-3 relative z-10">
+                     <div className="flex justify-between items-center mb-3 relative z-10">
                          <span className="text-xs font-bold text-navy-800 flex items-center">
                             <Sparkles size={14} className="mr-1.5 text-yellow-500"/>
                             AI特性分析
@@ -278,60 +413,130 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                              </button>
                          )}
                     </div>
-                    
-                    {formData.personalityAnalysis ? (
-                        <div className="relative z-10">
+                    {formData.personalityAnalysis && (
+                         <div className="relative z-10">
                             <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap bg-white/80 p-3 rounded-lg border border-navy-50">
                                 {formData.personalityAnalysis}
                             </div>
-                            <div className="text-right mt-2">
-                                <button onClick={handleAnalyzePersonality} className="text-[10px] text-navy-500 hover:text-navy-800 underline flex items-center ml-auto">
-                                    <RefreshCw size={10} className="mr-1" />
-                                    再分析する
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-xs text-gray-400 relative z-10">
-                            あなたのMBTIとストレングスファインダーの組み合わせから、<br/>独自の強みとキャリアの活かし方をAIが分析します。
-                        </p>
+                         </div>
                     )}
                 </div>
             )}
-
-            <div>
-                <label className="text-xs font-bold text-gray-500 block mb-1">保有スキル</label>
-                <input 
-                    className="w-full p-2.5 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500"
-                    value={formData.skills.join(', ')} 
-                    onChange={e => handleSkillChange(e.target.value)} 
-                    placeholder="例: React, Python, チームビルディング, 英語(TOEIC 800)"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">カンマ区切りで入力</p>
-            </div>
-        </div>
-
-        <div className="pt-2">
-            <button 
-                onClick={handleSave}
-                className={`w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center space-x-2 shadow-md ${
-                    showSaveSuccess ? 'bg-green-500 text-white' : 'bg-navy-900 text-white hover:bg-navy-800'
-                }`}
-            >
-                {showSaveSuccess ? <Check size={18} /> : <Save size={18} />}
-                <span>{showSaveSuccess ? '保存しました！' : 'プロフィールを保存'}</span>
-            </button>
         </div>
       </div>
 
-      {/* Resume Generator */}
+      {/* 2. Career Anchors & Environment */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+          <h3 className="text-sm font-bold text-navy-900 flex items-center space-x-2 border-b border-gray-100 pb-2">
+            <Heart size={16} />
+            <span>キャリアの軸・環境</span>
+          </h3>
+          
+          <div className="space-y-5">
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center">
+                      <Zap size={12} className="mr-1"/>
+                      強み・特性 (Personality & Experience)
+                  </label>
+                  <textarea 
+                      className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500 h-24 resize-none"
+                      value={formData.careerStrengths}
+                      onChange={e => handleChange('careerStrengths', e.target.value)}
+                      placeholder="性格的な強み（例：慎重さ、共感性）と、経験からくる強み（例：チームマネジメント、危機管理）を組み合わせて、仕事でどう活かせるか記入してください。"
+                  />
+              </div>
+
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center">
+                      <Briefcase size={12} className="mr-1"/>
+                      興味・関心 (Industry / Theme)
+                  </label>
+                  <textarea 
+                      className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500 h-20 resize-none"
+                      value={formData.interests}
+                      onChange={e => handleChange('interests', e.target.value)}
+                      placeholder="例：教育Tech、地方創生、デザイン思考、メンタルヘルス..."
+                  />
+              </div>
+
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center">
+                      <Sparkles size={12} className="mr-1"/>
+                      やりがい・価値観 (Values)
+                  </label>
+                  <textarea 
+                      className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500 h-20 resize-none"
+                      value={formData.values}
+                      onChange={e => handleChange('values', e.target.value)}
+                      placeholder="例：人の成長を直接感じる時、チームで難局を乗り越えること、自由な発想が許されること..."
+                  />
+              </div>
+
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center">
+                      <Users size={12} className="mr-1"/>
+                      理想の環境・社風 (Environment)
+                  </label>
+                  <textarea 
+                      className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500 h-20 resize-none"
+                      value={formData.environment}
+                      onChange={e => handleChange('environment', e.target.value)}
+                      placeholder="例：心理的安全性が高い、フラットな組織、リモートワーク推奨、ロジカルより感情を大切にする..."
+                  />
+              </div>
+          </div>
+          
+          {/* AI Career Summary */}
+          <div className="bg-navy-900 rounded-xl p-5 text-white shadow-lg relative overflow-hidden">
+               <div className="absolute top-0 right-0 p-8 opacity-10 bg-white rounded-full blur-3xl w-32 h-32 transform translate-x-10 -translate-y-10 pointer-events-none"></div>
+               <div className="relative z-10">
+                    <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-bold flex items-center text-sm">
+                            <Sparkles className="mr-2 text-yellow-400" size={16}/>
+                            AI キャリア自己統合サマリー
+                        </h4>
+                        <button 
+                            onClick={handleSummarizeCareer}
+                            disabled={isSummarizing}
+                            className="text-[10px] bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition-colors flex items-center backdrop-blur-sm"
+                        >
+                            {isSummarizing ? <Loader2 className="animate-spin mr-1" size={10}/> : <RefreshCw size={10} className="mr-1"/>}
+                            {formData.careerSummary ? '再生成' : '要約を生成'}
+                        </button>
+                    </div>
+                    
+                    {formData.careerSummary ? (
+                        <div className="text-xs leading-relaxed text-navy-100 bg-black/20 p-4 rounded-lg">
+                            {formData.careerSummary}
+                        </div>
+                    ) : (
+                        <p className="text-xs text-navy-300">
+                            あなたの強み、スキル、興味、価値観を全て統合し、「自分はどういう人間で、どこで輝くのか」をAIが言語化します。
+                        </p>
+                    )}
+               </div>
+          </div>
+      </div>
+
+      {/* 3. Skills & Resume */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
          <h3 className="text-sm font-bold text-navy-900 flex items-center space-x-2 border-b border-gray-100 pb-2">
             <FileText size={16} />
-            <span>職務経歴書 自動生成</span>
+            <span>スキル・職務経歴書 (Hard)</span>
         </h3>
         
-        <div className="space-y-2">
+        <div>
+            <label className="text-xs font-bold text-gray-500 block mb-1">保有スキル</label>
+            <input 
+                className="w-full p-2.5 bg-navy-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-navy-500"
+                value={formData.skills.join(', ')} 
+                onChange={e => handleSkillChange(e.target.value)} 
+                placeholder="例: React, Python, チームビルディング, 英語(TOEIC 800)"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">カンマ区切りで入力</p>
+        </div>
+        
+        <div className="space-y-2 pt-2">
             <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-gray-500 block">経歴・職歴メモ</label>
                 <span className="text-[10px] text-navy-600 bg-navy-50 px-2 py-0.5 rounded-full border border-navy-100">自然言語・箇条書きでOK</span>
@@ -340,21 +545,8 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                 className="w-full p-3 bg-navy-50 rounded-lg text-sm h-48 border border-gray-200 focus:outline-none focus:border-navy-500 resize-none leading-relaxed"
                 value={formData.history} 
                 onChange={e => handleChange('history', e.target.value)} 
-                placeholder={`【入力例】
-・2018年4月 〇〇株式会社に入社。
-・営業部に配属され、新規開拓を担当。
-・2020年にはチームリーダーになり、5人の部下を持った。
-・売上目標を3年連続で達成。
-・使用ツール：Salesforce, Excel
-
-※ このように思いつくまま書いてください。AIがきれいな経歴書フォーマットに書き換えます。`}
+                placeholder="過去の職務経験を自由に入力してください..."
             />
-        </div>
-
-        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-            <p className="text-xs text-blue-800 leading-relaxed">
-                入力されたメモとプロフィール情報を統合し、フォーマルな職務経歴書（Markdown形式）を作成します。
-            </p>
         </div>
         
         <button
@@ -381,15 +573,65 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
         )}
       </div>
 
-       {/* Reset Data */}
-       <div className="pt-6">
-        <button
-            onClick={onResetData}
-            className="w-full py-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl font-medium transition-colors flex items-center justify-center space-x-2 text-xs"
-        >
-            <Trash2 size={14} />
-            <span>全データを削除してリセット</span>
-        </button>
+       {/* Save Button (Floating or Bottom) */}
+       <div className="pt-2">
+            <button 
+                onClick={handleSave}
+                className={`w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center space-x-2 shadow-md ${
+                    showSaveSuccess ? 'bg-green-500 text-white' : 'bg-navy-900 text-white hover:bg-navy-800'
+                }`}
+            >
+                {showSaveSuccess ? <Check size={18} /> : <Save size={18} />}
+                <span>{showSaveSuccess ? '保存しました！' : 'プロフィールを保存'}</span>
+            </button>
+       </div>
+
+       {/* System Settings Section (Moved to bottom) */}
+       <div className="mt-12 pt-8 border-t border-gray-200">
+           <h3 className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-wider">システム設定</h3>
+           
+           <div className="bg-gray-50 rounded-xl p-4 space-y-4">
+               {/* Backup Controls */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-bold text-navy-900">データのバックアップ</p>
+                        <p className="text-[10px] text-gray-500">データをファイル(.json)として保存・復元します</p>
+                    </div>
+                    <div className="flex space-x-2">
+                        <button 
+                            onClick={handleExportData}
+                            className="p-2 bg-white border border-gray-200 rounded-lg text-navy-600 hover:bg-navy-50 hover:text-navy-900 transition-colors"
+                            title="データをファイルに保存 (バックアップ)"
+                        >
+                            <Download size={18} />
+                        </button>
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 bg-white border border-gray-200 rounded-lg text-navy-600 hover:bg-navy-50 hover:text-navy-900 transition-colors"
+                            title="ファイルを読み込んで復元"
+                        >
+                            <Upload size={18} />
+                        </button>
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            onChange={handleImportData} 
+                            accept=".json" 
+                            className="hidden" 
+                        />
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                    <button
+                        onClick={onResetData}
+                        className="w-full py-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2 text-xs"
+                    >
+                        <Trash2 size={14} />
+                        <span>全データを削除してリセット</span>
+                    </button>
+                </div>
+           </div>
        </div>
 
     </div>

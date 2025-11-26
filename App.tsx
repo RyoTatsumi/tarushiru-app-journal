@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ViewState, AppData, JournalEntry, Transaction, Goal, UserProfile, AssetRecord, MoneyConfig } from './types';
 import { Navigation } from './components/Navigation';
@@ -38,7 +39,15 @@ function App() {
             ...parsedData,
             // Ensure nested objects are merged correctly
             moneyConfig: { ...INITIAL_DATA.moneyConfig, ...(parsedData.moneyConfig || {}) },
-            user: parsedData.user ? { ...parsedData.user } : null
+            user: parsedData.user ? { 
+                ...parsedData.user,
+                // Ensure new fields exist (migration)
+                careerStrengths: parsedData.user.careerStrengths || '',
+                interests: parsedData.user.interests || '',
+                values: parsedData.user.values || '',
+                environment: parsedData.user.environment || '',
+                careerSummary: parsedData.user.careerSummary || ''
+            } : null
         };
         
         // Ensure assets array exists
@@ -65,8 +74,6 @@ function App() {
         setData(mergedData);
       } catch (e) {
         console.error("Failed to parse saved data", e);
-        // If parse fails, keep INITIAL_DATA but don't overwrite localStorage yet
-        // (In a real app, we might want to backup the corrupted data)
       }
     }
     setIsInitialized(true);
@@ -96,7 +103,11 @@ function App() {
             mbti: '',
             strengths: [],
             skills: [],
-            history: ''
+            history: '',
+            careerStrengths: '',
+            interests: '',
+            values: '',
+            environment: ''
         };
         setData(prev => ({
             ...prev,
@@ -173,7 +184,7 @@ function App() {
         <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
             <h1 className="font-bold text-navy-900 tracking-tight">TARUSHIRU</h1>
             <div className="flex items-center space-x-2">
-                <span className="text-[10px] text-gray-400">Demo v0.2</span>
+                <span className="text-[10px] text-gray-400">Demo v0.4</span>
                 <div className="w-8 h-8 bg-navy-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
                     {data.user?.name ? data.user.name.charAt(0).toUpperCase() : 'U'}
                 </div>

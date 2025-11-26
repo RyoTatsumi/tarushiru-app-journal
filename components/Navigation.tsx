@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Book, Wallet, Target, User, LogOut } from 'lucide-react';
 import { ViewState } from '../types';
@@ -13,7 +14,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, setView, on
     { view: ViewState.JOURNAL, icon: Book, label: '日記' },
     { view: ViewState.MONEY, icon: Wallet, label: '資産' },
     { view: ViewState.GOALS, icon: Target, label: '目標' },
-    { view: ViewState.PROFILE, icon: User, label: '設定' },
+    { view: ViewState.PROFILE, icon: User, label: 'プロフィール' },
   ];
 
   return (

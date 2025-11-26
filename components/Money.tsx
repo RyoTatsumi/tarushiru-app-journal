@@ -1,7 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import { Transaction, AssetRecord, MoneyConfig } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { Plus, TrendingUp, TrendingDown, DollarSign, Settings, Trash2, Save } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { Plus, DollarSign, Settings, Trash2, TrendingUp, TrendingDown, Sparkles, Loader2, CalendarClock } from 'lucide-react';
+import { analyzeAssetTrends } from '../services/geminiService';
 
 interface MoneyProps {
   transactions: Transaction[];
@@ -27,6 +29,10 @@ export const Money: React.FC<MoneyProps> = ({
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [isConfigMode, setIsConfigMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  
+  // Analysis States
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
   // --- States for Transaction (Expense) Management ---
   const [amount, setAmount] = useState('');
@@ -38,6 +44,22 @@ export const Money: React.FC<MoneyProps> = ({
   // Get asset record for selected month, or create empty default
   const currentAssetRecord = useMemo(() => {
       return assets.find(r => r.month === selectedMonth) || { month: selectedMonth, values: {} };
+  }, [assets, selectedMonth]);
+
+  // Previous month record for comparison
+  const previousMonthRecord = useMemo(() => {
+      const d = new Date(selectedMonth + "-01");
+      d.setMonth(d.getMonth() - 1);
+      const prevMonthStr = d.toISOString().slice(0, 7);
+      return assets.find(r => r.month === prevMonthStr);
+  }, [assets, selectedMonth]);
+
+  // Previous YEAR record for comparison (YoY)
+  const previousYearRecord = useMemo(() => {
+      const d = new Date(selectedMonth + "-01");
+      d.setFullYear(d.getFullYear() - 1);
+      const prevYearStr = d.toISOString().slice(0, 7);
+      return assets.find(r => r.month === prevYearStr);
   }, [assets, selectedMonth]);
 
   const handleAssetValueChange = (cat: string, valueStr: string) => {
@@ -75,6 +97,18 @@ export const Money: React.FC<MoneyProps> = ({
       });
   };
 
+  const handleAnalyzeAssets = async () => {
+      setIsAnalyzing(true);
+      try {
+          const result = await analyzeAssetTrends(assets);
+          setAnalysisResult(result);
+      } catch (e) {
+          alert('分析に失敗しました。');
+      } finally {
+          setIsAnalyzing(false);
+      }
+  };
+
   // --- Logic: Transaction Management ---
   const handleTransactionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +135,30 @@ export const Money: React.FC<MoneyProps> = ({
   })).filter(d => d.value > 0);
 
   const totalAssets = assetChartData.reduce((acc, curr) => acc + curr.value, 0);
+  
+  const prevTotalAssets = previousMonthRecord 
+    ? (Object.values(previousMonthRecord.values) as number[]).reduce((sum, val) => sum + val, 0)
+    : 0;
+  
+  const monthDiff = totalAssets - prevTotalAssets;
+
+  const prevYearTotalAssets = previousYearRecord
+    ? (Object.values(previousYearRecord.values) as number[]).reduce((sum, val) => sum + val, 0)
+    : 0;
+    
+  const yearDiff = totalAssets - prevYearTotalAssets;
+
+  // Trend Data for Line Chart (Sort by month)
+  const trendData = useMemo(() => {
+      const sortedAssets = [...assets].sort((a, b) => a.month.localeCompare(b.month));
+      return sortedAssets.map(record => {
+          const total = (Object.values(record.values) as number[]).reduce((sum, val) => sum + val, 0);
+          return {
+              month: record.month,
+              total: total
+          };
+      });
+  }, [assets]);
 
   return (
     <div className="space-y-6 pb-24">
@@ -159,76 +217,180 @@ export const Money: React.FC<MoneyProps> = ({
 
       {/* --- ASSET MANAGEMENT SECTION --- */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-             <div className="flex items-center space-x-2">
-                 <span className="text-sm font-bold text-navy-900">対象月:</span>
-                 <input 
-                    type="month" 
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="text-sm bg-navy-50 border-none rounded p-1 focus:ring-1 focus:ring-navy-500"
-                 />
+        {/* Total Assets Card */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4">
+             <div className="flex items-center space-x-3">
+                 <div className="bg-navy-50 p-2 rounded-lg text-navy-800">
+                    <DollarSign size={24} />
+                 </div>
+                 <div>
+                    <span className="text-xs text-gray-500 block mb-1">対象月</span>
+                    <input 
+                        type="month" 
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="text-sm bg-navy-50 border border-transparent hover:border-navy-200 rounded p-1 cursor-pointer focus:ring-1 focus:ring-navy-500 font-medium text-navy-900"
+                    />
+                 </div>
              </div>
-             <div className="text-right">
-                 <span className="text-xs text-gray-500 block">総資産</span>
-                 <span className="text-lg font-bold text-navy-900">¥{totalAssets.toLocaleString()}</span>
+             
+             <div className="flex flex-col items-end w-full md:w-auto">
+                 <span className="text-xs text-gray-500 block mb-1">総資産</span>
+                 <div className="flex items-baseline space-x-3">
+                    <span className="text-2xl font-bold text-navy-900">¥{totalAssets.toLocaleString()}</span>
+                 </div>
+                 
+                 <div className="flex space-x-4 mt-1">
+                    {/* Monthly Diff */}
+                    {previousMonthRecord && (
+                        <div className={`flex items-center text-xs font-medium ${monthDiff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {monthDiff >= 0 ? <TrendingUp size={14} className="mr-1"/> : <TrendingDown size={14} className="mr-1"/>}
+                            {monthDiff >= 0 ? '+' : ''}¥{Math.abs(monthDiff).toLocaleString()}
+                            <span className="text-gray-400 ml-1">(前月比)</span>
+                        </div>
+                    )}
+                    {/* Yearly Diff (YoY) */}
+                    {previousYearRecord && (
+                        <div className={`flex items-center text-xs font-medium ${yearDiff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            <CalendarClock size={14} className="mr-1"/>
+                            {yearDiff >= 0 ? '+' : ''}¥{Math.abs(yearDiff).toLocaleString()}
+                            <span className="text-gray-400 ml-1">(前年比)</span>
+                        </div>
+                    )}
+                 </div>
              </div>
         </div>
+        
+        {/* Trend Chart & Analysis */}
+        {trendData.length > 1 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-64">
+                    <h3 className="text-xs font-bold text-navy-900 mb-2">資産推移</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={trendData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#243b53" stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#243b53" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f4f8"/>
+                            <XAxis dataKey="month" tick={{fontSize: 10}} tickLine={false} axisLine={false} tickFormatter={(val) => val.slice(2)} />
+                            <YAxis tick={{fontSize: 10}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val/10000}万`} width={40} />
+                            <Tooltip 
+                                contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px'}}
+                                itemStyle={{color: '#102a43'}}
+                                formatter={(value: number) => [`¥${value.toLocaleString()}`, '総資産']}
+                            />
+                            <Area type="monotone" dataKey="total" stroke="#102a43" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
 
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
-                <DollarSign size={16} className="mr-1"/>
-                資産内訳入力
-            </h3>
-            {moneyConfig.assetCategories.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-4">
-                    右上の設定ボタン<Settings size={12} className="inline"/>から<br/>資産項目（銀行、証券など）を追加してください。
-                </p>
-            ) : (
-                <div className="space-y-3">
-                    {moneyConfig.assetCategories.map(cat => (
-                        <div key={cat} className="flex items-center justify-between">
-                            <label className="text-xs text-gray-600 w-1/3 truncate">{cat}</label>
-                            <div className="relative w-2/3">
-                                <span className="absolute left-3 top-2 text-gray-400 text-xs">¥</span>
-                                <input 
-                                    type="number"
-                                    value={currentAssetRecord.values[cat] || ''}
-                                    onChange={(e) => handleAssetValueChange(cat, e.target.value)}
-                                    className="w-full bg-navy-50 rounded-lg py-1.5 pl-6 pr-2 text-sm text-right focus:outline-none focus:ring-1 focus:ring-navy-500"
-                                    placeholder="0"
-                                />
-                            </div>
+                {/* AI Analysis Card */}
+                <div className="md:col-span-1 bg-navy-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 bg-white rounded-full blur-3xl w-32 h-32 transform translate-x-10 -translate-y-10 pointer-events-none"></div>
+                    <div className="relative z-10 flex-1 flex flex-col">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-xs font-bold flex items-center">
+                                <Sparkles size={14} className="text-yellow-400 mr-2"/>
+                                AI 資産レポート
+                            </h3>
+                            <button 
+                                onClick={handleAnalyzeAssets}
+                                disabled={isAnalyzing}
+                                className="bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition-colors"
+                            >
+                                {isAnalyzing ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
+                            </button>
                         </div>
-                    ))}
+                        
+                        <div className="flex-1 text-xs leading-relaxed text-navy-100 overflow-y-auto max-h-40 scrollbar-thin scrollbar-thumb-navy-700 pr-1">
+                            {analysisResult ? (
+                                <div className="whitespace-pre-wrap">{analysisResult}</div>
+                            ) : (
+                                <p className="text-navy-300 italic">
+                                    過去の推移（最大2年分）から、年間トレンドや資産バランスのアドバイスを作成します。
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        <div className="space-y-4">
+            {/* Input Form (Expanded) - Now Full Width */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
+                    <DollarSign size={16} className="mr-1"/>
+                    資産内訳の入力 ({selectedMonth})
+                </h3>
+                {moneyConfig.assetCategories.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">
+                        右上の設定ボタン<Settings size={12} className="inline"/>から<br/>資産項目（銀行、証券など）を追加してください。
+                    </p>
+                ) : (
+                    <div className="space-y-4">
+                        {moneyConfig.assetCategories.map(cat => (
+                            <div key={cat} className="group">
+                                <label className="text-xs font-bold text-gray-600 mb-1 block group-hover:text-navy-600 transition-colors">{cat}</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">¥</span>
+                                    <input 
+                                        type="number"
+                                        value={currentAssetRecord.values[cat] || ''}
+                                        onChange={(e) => handleAssetValueChange(cat, e.target.value)}
+                                        className="w-full bg-navy-50 rounded-xl py-2 pl-8 pr-3 text-base text-right font-medium text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500 transition-all"
+                                        placeholder="0"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Asset Breakdown Chart */}
+            {assetChartData.length > 0 && (
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 h-auto min-h-[300px]">
+                    <h3 className="text-sm font-bold text-navy-900 mb-2">ポートフォリオ構成</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                        <Pie
+                            data={assetChartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                        >
+                            {assetChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Tooltip 
+                            contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px'}}
+                            formatter={(value) => `¥${Number(value).toLocaleString()}`} 
+                        />
+                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{fontSize: '10px'}}/>
+                        </PieChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                        {assetChartData.map((d, i) => (
+                             <div key={d.name} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded-lg">
+                                <div className="flex items-center">
+                                    <div className="w-2 h-2 rounded-full mr-2" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
+                                    <span className="text-gray-600 truncate max-w-[80px]">{d.name}</span>
+                                </div>
+                                <span className="font-bold text-navy-900">{Math.round(d.value / totalAssets * 100)}%</span>
+                             </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
-
-        {/* Asset Chart */}
-        {assetChartData.length > 0 && (
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                    <Pie
-                        data={assetChartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={70}
-                        paddingAngle={5}
-                        dataKey="value"
-                    >
-                        {assetChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString()}`} />
-                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{fontSize: '10px'}}/>
-                    </PieChart>
-                </ResponsiveContainer>
-            </div>
-        )}
       </section>
 
       {/* --- EXPENSE MANAGEMENT SECTION (Conditional) --- */}

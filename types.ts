@@ -1,3 +1,4 @@
+
 export enum ViewState {
   AUTH = 'AUTH',
   JOURNAL = 'JOURNAL',
@@ -59,11 +60,18 @@ export interface UserProfile {
   email: string;
   password?: string;
   mbti: string;
-  strengths: string[]; // 変更: 配列型へ
+  strengths: string[];
   skills: string[];
   history: string;
   resumeMarkdown?: string;
-  personalityAnalysis?: string; // AI性格診断結果
+  personalityAnalysis?: string;
+  
+  // New Fields for Detailed Career Profile
+  careerStrengths?: string; // キャリアにおける強み（性格・経験）
+  interests?: string; // 興味・関心（業界、テーマ）
+  values?: string; // やりがい・価値観
+  environment?: string; // 理想の環境・社風
+  careerSummary?: string; // AIによるキャリア要約
 }
 
 export interface AppData {
@@ -73,10 +81,4 @@ export interface AppData {
   goals: Goal[];
   assets: AssetRecord[];
   moneyConfig: MoneyConfig;
-}
-export enum ViewState {
-  JOURNAL = 'JOURNAL',
-  MONEY = 'MONEY',
-  GOALS = 'GOALS',
-  PROFILE = 'PROFILE',
 }
