@@ -8,13 +8,13 @@ const ai = new GoogleGenAI({ apiKey });
 const MODEL_FAST = 'gemini-2.5-flash';
 
 /**
- * ジャーナルエントリーを分析し、感情・テーマ・行動を抽出します。
+ * ジャーナルエントリーを分析し、感情・テーマ・行動・コメントを抽出します。
  */
 export const analyzeJournalEntry = async (text: string) => {
   try {
     const prompt = `
       ユーザーが書いた以下の日記（ジャーナル）を分析してください。
-      感情スコア（0.0〜1.0）、主要なテーマ（日本語）、および具体的な行動（日本語）を抽出してください。
+      感情スコア（0.0〜1.0）、主要なテーマ（日本語）、具体的な行動（日本語）、そして「ポジティブな一言コメント」を出力してください。
       
       日記の内容: "${text}"
     `;
@@ -41,12 +41,16 @@ export const analyzeJournalEntry = async (text: string) => {
             themes: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: "抽出されたテーマ（例：仕事、家族、将来など）"
+              description: "抽出されたテーマ"
             },
             actions: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: "ユーザーが取った行動、または取ろうとしている行動"
+              description: "ユーザーが取った行動"
+            },
+            aiComment: {
+                type: Type.STRING,
+                description: "ユーザーへの共感や励まし、あるいは洞察を含む温かい一言コメント（50文字以内）"
             }
           }
         }
@@ -65,7 +69,6 @@ export const analyzeJournalEntry = async (text: string) => {
  */
 export const analyzeJournalTrends = async (entries: any[]) => {
     try {
-      // Limit to recent entries to save tokens, format for AI
       const recentEntries = entries.slice(-15).map(e => ({
           date: e.date,
           content: e.content,
@@ -112,14 +115,6 @@ export const generateResume = async (profileData: any) => {
       あなたはプロのキャリアコンサルタントです。
       以下のユーザープロフィールに基づき、フォーマルで魅力的な日本の「職務経歴書」をMarkdown形式で作成してください。
       
-      ## 指示
-      1. ユーザーが入力した「経歴・職歴メモ」は、自然言語、箇条書き、あるいは乱雑なメモ書きの可能性があります。
-         これを時系列に整理し、「会社名」「期間」「役職」「主な業務内容」「実績」といった標準的な経歴書フォーマットに構造化して書き直してください。
-      2. 不足している情報（具体的な日付など）は、文脈から自然に補うか、あるいはプレースホルダー（例：20XX年）として残してください。
-      3. 自己PRセクションも作成し、MBTI (${profileData.mbti}) やストレングスファインダー (${strengthsStr}) の強み、
-         および本人が大切にしている価値観 (${profileData.values || '特になし'}) を具体的な職歴と結びつけてアピールしてください。
-      4. Markdownの見出し (#, ##) を適切に使用し、読みやすくしてください。
-
       ## ユーザー情報
       氏名: ${profileData.name}
       MBTI: ${profileData.mbti}
@@ -128,7 +123,7 @@ export const generateResume = async (profileData: any) => {
       興味ある業界・テーマ: ${profileData.interests || '特になし'}
       大切にしている価値観: ${profileData.values || '特になし'}
       
-      ## 経歴・職歴メモ (整理対象):
+      ## 経歴・職歴メモ:
       ${profileData.history}
     `;
 
@@ -161,16 +156,11 @@ export const summarizeCareerProfile = async (profileData: any) => {
           ## 入力情報
           - **MBTI**: ${profileData.mbti}
           - **StrengthFinder**: ${strengthsStr}
-          - **本人が認識している強み (性格/経験)**: ${profileData.careerStrengths || '未入力'}
+          - **本人が認識している強み**: ${profileData.careerStrengths || '未入力'}
           - **保有スキル**: ${profileData.skills.join(', ')}
           - **興味・関心**: ${profileData.interests || '未入力'}
           - **やりがい・価値観**: ${profileData.values || '未入力'}
           - **理想の環境**: ${profileData.environment || '未入力'}
-    
-          ## 出力要件
-          - 300〜400文字程度の文章。
-          - 「あなたのキャリアの核となるのは...」といった書き出しで、要素同士のつながり（例：強みとやりがいの一致点）を見つけて言語化してください。
-          - 最後に、このユーザーに向いていると思われる役割や働き方のヒントを一言添えてください。
         `;
     
         const response = await ai.models.generateContent({
@@ -197,10 +187,6 @@ export const analyzePersonality = async (mbti: string, strengths: string[]) => {
     const prompt = `
       心理学とキャリア開発の専門家として振る舞ってください。
       以下の特性を持つ人物の「性格的な強み」と「キャリアでの活かし方」を日本語で解説してください。
-      
-      特に、MBTIタイプ (${mbti}) の基本的特性に、ストレングスファインダーの上位資質 (${strengthsStr}) がどのように作用するか（相乗効果など）を具体的に分析してください。
-      300文字以内で、ポジティブかつ洞察に満ちた内容にしてください。
-
       MBTI: ${mbti}
       ストレングスファインダー(Top 5): ${strengthsStr}
     `;
@@ -218,30 +204,31 @@ export const analyzePersonality = async (mbti: string, strengths: string[]) => {
 };
 
 /**
- * 資産データに基づいてファイナンシャルアドバイスを提供します。
+ * 資産データと家計予算構造に基づいてファイナンシャルアドバイスを提供します。
  */
-export const analyzeAssetTrends = async (assets: any[]) => {
+export const analyzeAssetTrends = async (assets: any[], budget: any) => {
     try {
-        // Sort by month
         const sortedAssets = [...assets].sort((a, b) => a.month.localeCompare(b.month));
-        
-        // Use last 24 months to allow yearly comparison
         const recentAssets = sortedAssets.slice(-24);
 
         const prompt = `
           あなたは優秀なファイナンシャルプランナー（FP）です。
-          ユーザーの資産推移データ（最大24ヶ月分）を分析し、Markdown形式でレポートを作成してください。
+          ユーザーの「資産推移（Stock）」と「現在の収支構造（Flow）」の両方を分析し、
+          資産形成のスピードを上げるための構造的なアドバイス（支出削減やバランス調整）を行ってください。
 
-          ## 分析観点
-          1. **長期的トレンド**: 直近1年だけでなく、過去2年間の推移を見て、順調に資産が増えているか、あるいは停滞しているか評価してください。
-          2. **前年比の変化**: もしデータがあれば、去年の同時期と比較してどう変化しているか言及してください。
-          3. **ポートフォリオ**: 現金比率や投資比率についてのコメント（もしデータから読み取れれば）。
-          4. **アドバイス**: 資産形成に向けた励ましや、もし急激な減少があれば注意喚起など。
+          ## 収支構造 (Flow)
+          - 手取り月収: ${budget.monthlyIncome}円
+          - 変動費予算: ${budget.variableBudget}円
+          - 固定費リスト: ${JSON.stringify(budget.fixedCosts)}
 
-          ## データ
+          ## 資産推移データ (Stock - 直近24ヶ月)
           ${JSON.stringify(recentAssets)}
-          
-          ※具体的な投資銘柄の推奨はせず、あくまで資産バランスと推移に対するフィードバックを行ってください。
+
+          ## 出力要件
+          - Markdown形式
+          - まず現状の「貯蓄率（余剰金割合）」や「固定費率」について評価してください。
+          - 資産の増減トレンドについてコメントしてください。
+          - 具体的で実行可能な改善提案（どの固定費を見直すべきか、など）を提示してください。
         `;
 
         const response = await ai.models.generateContent({
@@ -264,8 +251,9 @@ export const getGoalCoaching = async (goals: any[]) => {
       const goalsText = JSON.stringify(goals);
       const prompt = `
         あなたは支援的なライフコーチです。以下の目標リストを見て、
-        ユーザーを励ます短い要約と、前進するための具体的なアドバイスを1つ提示してください。
-        口調は丁寧かつ親しみやすく、日本語で出力してください。200文字以内でお願いします。
+        各カテゴリ（在り方、生活、仕事、直近の仕事目標）のバランスについてコメントし、
+        特に「直近の仕事目標」を達成するための具体的なアクションプランを1つ提案してください。
+        口調は丁寧かつ親しみやすく、日本語で出力してください。
         
         目標リスト: ${goalsText}
       `;

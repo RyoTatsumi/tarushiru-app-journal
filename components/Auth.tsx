@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, UserPlus, LogIn } from 'lucide-react';
+import { Mail, UserPlus, LogIn } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (email: string, password: string) => void;
@@ -22,14 +22,43 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
     <div className="min-h-screen bg-navy-900 flex flex-col items-center justify-center p-6 text-white">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6 backdrop-blur-sm">
-            <Lock size={32} className="text-white" />
+          {/* Zen Circle Logo */}
+          <div className="w-24 h-24 mx-auto mb-6 relative flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl">
+                <defs>
+                    <filter id="glow">
+                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+                        <feMerge>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+                <path 
+                    d="M50 10C25 10 10 30 10 50C10 75 30 90 55 90C80 90 90 70 90 50C90 30 75 15 60 10" 
+                    fill="none" 
+                    stroke="white" 
+                    strokeWidth="6" 
+                    strokeLinecap="round"
+                    style={{filter: 'url(#glow)'}}
+                    opacity="0.9"
+                />
+                <path 
+                    d="M50 15C30 15 15 35 15 50" 
+                    fill="none" 
+                    stroke="white" 
+                    strokeWidth="2" 
+                    strokeLinecap="round"
+                    opacity="0.5"
+                />
+            </svg>
+            <span className="absolute text-4xl font-bold text-white font-sans tracking-widest pt-1">T</span>
           </div>
           <h1 className="text-3xl font-bold tracking-tight">TARUSHIRU</h1>
           <p className="text-navy-200 mt-2 text-sm">人に見せない自分を整理する空間</p>
         </div>
 
-        <div className="bg-navy-800/50 p-6 rounded-2xl border border-navy-700/50">
+        <div className="bg-navy-800/50 p-6 rounded-2xl border border-navy-700/50 backdrop-blur-sm">
           <h2 className="text-center text-lg font-medium mb-4 text-white">
             {hasExistingAccount ? 'おかえりなさい' : 'はじめる'}
           </h2>
@@ -46,7 +75,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
               />
             </div>
             <div className="relative">
-              <Lock className="absolute left-4 top-3.5 text-navy-300" size={18} />
+              <div className="absolute left-4 top-3.5 text-navy-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              </div>
               <input
                 type="password"
                 value={password}
@@ -72,9 +103,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
           </form>
         </div>
 
-        <p className="text-center text-xs text-navy-400 mt-8">
-          データはお使いのブラウザ内に暗号化されず保存されます。<br/>
-          （デモ版のため、重要な個人情報の入力はご注意ください）
+        <p className="text-center text-xs text-navy-400 mt-8 opacity-60">
+          データはお使いのブラウザ内にのみ保存されます。<br/>
+          （サーバーには送信されません）
         </p>
       </div>
     </div>

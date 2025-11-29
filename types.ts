@@ -24,28 +24,33 @@ export interface JournalEntry {
     themes: string[];
     actions: string[];
   };
+  aiComment?: string; // AIによるポジティブな一言
 }
 
-// 支出・収入（既存機能）
-export interface Transaction {
-  id: string;
-  date: string;
-  amount: number;
-  category: string;
-  note: string;
-  type: 'income' | 'expense';
-}
-
-// 新しい資産管理機能用
+// 資産管理（Stock）
 export interface AssetRecord {
   month: string; // YYYY-MM
-  values: { [category: string]: number }; // "Bank A": 10000
+  values: { [category: string]: number };
+}
+
+// 収支構造・予算（Flow）
+export interface FixedCostItem {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+export interface BudgetProfile {
+  monthlyIncome: number; // 手取り月収
+  fixedCosts: FixedCostItem[]; // 固定費リスト
+  variableBudget: number; // 変動費（想定予算）
 }
 
 export interface MoneyConfig {
-  assetCategories: string[]; // ユーザー定義の資産カテゴリーリスト
-  enableExpenses: boolean; // 支出管理機能のON/OFF
+  assetCategories: string[];
 }
+
+export type GoalCategory = 'being' | 'life' | 'work' | 'work_short';
 
 export interface Goal {
   id: string;
@@ -53,6 +58,7 @@ export interface Goal {
   description: string;
   deadline: string;
   progress: number; // 0-100
+  category: GoalCategory;
 }
 
 export interface UserProfile {
@@ -66,19 +72,18 @@ export interface UserProfile {
   resumeMarkdown?: string;
   personalityAnalysis?: string;
   
-  // New Fields for Detailed Career Profile
-  careerStrengths?: string; // キャリアにおける強み（性格・経験）
-  interests?: string; // 興味・関心（業界、テーマ）
-  values?: string; // やりがい・価値観
-  environment?: string; // 理想の環境・社風
-  careerSummary?: string; // AIによるキャリア要約
+  careerStrengths?: string;
+  interests?: string;
+  values?: string;
+  environment?: string;
+  careerSummary?: string;
 }
 
 export interface AppData {
   user: UserProfile | null;
   journal: JournalEntry[];
-  transactions: Transaction[];
   goals: Goal[];
   assets: AssetRecord[];
   moneyConfig: MoneyConfig;
+  budgetProfile: BudgetProfile; // New: 収支構造
 }

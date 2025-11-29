@@ -1,72 +1,62 @@
 
 import React, { useState, useMemo } from 'react';
-import { Transaction, AssetRecord, MoneyConfig } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Plus, DollarSign, Settings, Trash2, TrendingUp, TrendingDown, Sparkles, Loader2, CalendarClock } from 'lucide-react';
+import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem } from '../types';
+import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
+import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase } from 'lucide-react';
 import { analyzeAssetTrends } from '../services/geminiService';
 
 interface MoneyProps {
-  transactions: Transaction[];
-  onAddTransaction: (transaction: Transaction) => void;
   assets: AssetRecord[];
   onUpdateAssets: (assets: AssetRecord[]) => void;
   moneyConfig: MoneyConfig;
   onUpdateConfig: (config: MoneyConfig) => void;
+  budgetProfile: BudgetProfile;
+  onUpdateBudget: (budget: BudgetProfile) => void;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ff6b6b', '#4ecdc4'];
+type TabMode = 'stock' | 'flow';
 
 export const Money: React.FC<MoneyProps> = ({ 
-    transactions, 
-    onAddTransaction, 
     assets, 
     onUpdateAssets, 
     moneyConfig, 
-    onUpdateConfig 
+    onUpdateConfig,
+    budgetProfile,
+    onUpdateBudget
 }) => {
-  // --- States for Asset Management ---
-  const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [activeTab, setActiveTab] = useState<TabMode>('stock');
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [isConfigMode, setIsConfigMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   
-  // Analysis States
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
-  // --- States for Transaction (Expense) Management ---
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
-
-  // --- Logic: Asset Management ---
-  
-  // Get asset record for selected month, or create empty default
+  // --- Logic: Asset Management (Stock) ---
   const currentAssetRecord = useMemo(() => {
       return assets.find(r => r.month === selectedMonth) || { month: selectedMonth, values: {} };
   }, [assets, selectedMonth]);
 
-  // Previous month record for comparison
+  const hasExistingData = !!assets.find(r => r.month === selectedMonth);
+
   const previousMonthRecord = useMemo(() => {
       const d = new Date(selectedMonth + "-01");
       d.setMonth(d.getMonth() - 1);
       const prevMonthStr = d.toISOString().slice(0, 7);
-      return assets.find(r => r.month === prevMonthStr);
+      return assets.find(r => r.month !== selectedMonth && r.month === prevMonthStr);
   }, [assets, selectedMonth]);
 
-  // Previous YEAR record for comparison (YoY)
   const previousYearRecord = useMemo(() => {
       const d = new Date(selectedMonth + "-01");
       d.setFullYear(d.getFullYear() - 1);
       const prevYearStr = d.toISOString().slice(0, 7);
-      return assets.find(r => r.month === prevYearStr);
+      return assets.find(r => r.month !== selectedMonth && r.month === prevYearStr);
   }, [assets, selectedMonth]);
 
   const handleAssetValueChange = (cat: string, valueStr: string) => {
       const val = valueStr === '' ? 0 : parseInt(valueStr, 10);
       const newValues = { ...currentAssetRecord.values, [cat]: val };
-      
-      // Update assets array
       const otherRecords = assets.filter(r => r.month !== selectedMonth);
       onUpdateAssets([...otherRecords, { month: selectedMonth, values: newValues }]);
   };
@@ -90,387 +80,378 @@ export const Money: React.FC<MoneyProps> = ({
       }
   };
 
-  const toggleExpenseFeature = () => {
-      onUpdateConfig({
-          ...moneyConfig,
-          enableExpenses: !moneyConfig.enableExpenses
+  // --- Logic: Budget/Flow Management ---
+  const [newFixedCostName, setNewFixedCostName] = useState('');
+  const [newFixedCostAmount, setNewFixedCostAmount] = useState('');
+
+  const handleAddFixedCost = () => {
+      if (!newFixedCostName || !newFixedCostAmount) return;
+      const newItem: FixedCostItem = {
+          id: Date.now().toString(),
+          name: newFixedCostName,
+          amount: Number(newFixedCostAmount)
+      };
+      onUpdateBudget({
+          ...budgetProfile,
+          fixedCosts: [...budgetProfile.fixedCosts, newItem]
+      });
+      setNewFixedCostName('');
+      setNewFixedCostAmount('');
+  };
+
+  const handleDeleteFixedCost = (id: string) => {
+      onUpdateBudget({
+          ...budgetProfile,
+          fixedCosts: budgetProfile.fixedCosts.filter(item => item.id !== id)
       });
   };
 
-  const handleAnalyzeAssets = async () => {
+  const handleIncomeChange = (val: string) => {
+      onUpdateBudget({ ...budgetProfile, monthlyIncome: Number(val) });
+  };
+  
+  const handleVariableBudgetChange = (val: string) => {
+      onUpdateBudget({ ...budgetProfile, variableBudget: Number(val) });
+  };
+
+  // --- Analysis ---
+  const handleAnalyze = async () => {
       setIsAnalyzing(true);
       try {
-          const result = await analyzeAssetTrends(assets);
+          const result = await analyzeAssetTrends(assets, budgetProfile);
           setAnalysisResult(result);
       } catch (e) {
-          alert('分析に失敗しました。');
+          alert("分析に失敗しました");
       } finally {
           setIsAnalyzing(false);
       }
   };
 
-  // --- Logic: Transaction Management ---
-  const handleTransactionSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !category) return;
-
-    const newTransaction: Transaction = {
-      id: Date.now().toString(),
-      date: new Date().toISOString(),
-      amount: Number(amount),
-      category,
-      note: '',
-      type
-    };
-
-    onAddTransaction(newTransaction);
-    setAmount('');
-    setCategory('');
-  };
-
-  // --- Data Prep for Charts ---
+  // --- Data for Charts ---
   const assetChartData = moneyConfig.assetCategories.map(cat => ({
       name: cat,
       value: currentAssetRecord.values[cat] || 0
   })).filter(d => d.value > 0);
 
   const totalAssets = assetChartData.reduce((acc, curr) => acc + curr.value, 0);
-  
-  const prevTotalAssets = previousMonthRecord 
-    ? (Object.values(previousMonthRecord.values) as number[]).reduce((sum, val) => sum + val, 0)
-    : 0;
-  
-  const monthDiff = totalAssets - prevTotalAssets;
+  const prevMonthTotal = previousMonthRecord ? Object.values(previousMonthRecord.values).reduce((a: number, b: number) => a + b, 0) : 0;
+  const prevYearTotal = previousYearRecord ? Object.values(previousYearRecord.values).reduce((a: number, b: number) => a + b, 0) : 0;
 
-  const prevYearTotalAssets = previousYearRecord
-    ? (Object.values(previousYearRecord.values) as number[]).reduce((sum, val) => sum + val, 0)
-    : 0;
-    
-  const yearDiff = totalAssets - prevYearTotalAssets;
-
-  // Trend Data for Line Chart (Sort by month)
   const trendData = useMemo(() => {
       const sortedAssets = [...assets].sort((a, b) => a.month.localeCompare(b.month));
       return sortedAssets.map(record => {
           const total = (Object.values(record.values) as number[]).reduce((sum, val) => sum + val, 0);
-          return {
-              month: record.month,
-              total: total
-          };
+          return { month: record.month, total };
       });
   }, [assets]);
 
+  // Flow Chart Data
+  const totalFixedCosts = budgetProfile.fixedCosts.reduce((sum, item) => sum + item.amount, 0);
+  const totalExpenses = totalFixedCosts + budgetProfile.variableBudget;
+  const surplus = budgetProfile.monthlyIncome - totalExpenses;
+
+  const flowData = [
+      { name: '収入', amount: budgetProfile.monthlyIncome, fill: '#334e68' },
+      { name: '支出(予)', amount: totalExpenses, fill: '#ef4444' },
+      { name: '余剰(投)', amount: Math.max(0, surplus), fill: '#10b981' },
+  ];
+
   return (
     <div className="space-y-6 pb-24">
-      <header className="flex justify-between items-end mb-2">
+      <header className="flex justify-between items-center mb-2">
         <div>
-            <h2 className="text-2xl font-bold text-navy-900">Assets & Money</h2>
-            <p className="text-sm text-gray-500">資産の推移と支出管理。</p>
+            <h2 className="text-2xl font-bold text-navy-900">Money</h2>
+            <p className="text-sm text-gray-500">資産形成の構造をつくる。</p>
         </div>
-        <button 
-            onClick={() => setIsConfigMode(!isConfigMode)}
-            className={`p-2 rounded-full transition-colors ${isConfigMode ? 'bg-navy-100 text-navy-900' : 'text-gray-400 hover:text-navy-700'}`}
-        >
-            <Settings size={20} />
-        </button>
       </header>
 
-      {/* Settings / Config Area */}
-      {isConfigMode && (
-          <div className="bg-navy-50 p-4 rounded-2xl border border-navy-100 mb-6 animate-in fade-in slide-in-from-top-2">
-              <h3 className="text-sm font-bold text-navy-900 mb-3">設定</h3>
-              
-              {/* Category Management */}
-              <div className="mb-4">
-                  <label className="text-xs text-gray-500 block mb-2">資産項目の管理</label>
-                  <div className="flex space-x-2 mb-2">
-                      <input 
-                        value={newCategoryName}
-                        onChange={e => setNewCategoryName(e.target.value)}
-                        placeholder="新しい項目名（例: 仮想通貨）"
-                        className="flex-1 text-xs p-2 rounded border border-gray-200"
-                      />
-                      <button onClick={handleAddCategory} className="bg-navy-900 text-white text-xs px-3 rounded">追加</button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                      {moneyConfig.assetCategories.map(cat => (
-                          <span key={cat} className="inline-flex items-center bg-white px-2 py-1 rounded text-xs text-navy-700 border border-gray-200">
-                              {cat}
-                              <button onClick={() => handleDeleteCategory(cat)} className="ml-2 text-gray-400 hover:text-red-500"><Trash2 size={12}/></button>
-                          </span>
-                      ))}
-                  </div>
-              </div>
+      {/* Tabs */}
+      <div className="flex space-x-1 bg-navy-50 p-1 rounded-xl">
+          <button 
+            onClick={() => setActiveTab('stock')}
+            className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'stock' ? 'bg-white text-navy-900 shadow-sm' : 'text-gray-400 hover:text-navy-600'
+            }`}
+          >
+              <PiggyBank size={16} />
+              <span>資産推移 (Stock)</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('flow')}
+            className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'flow' ? 'bg-white text-navy-900 shadow-sm' : 'text-gray-400 hover:text-navy-600'
+            }`}
+          >
+              <Wallet size={16} />
+              <span>収支構造 (Flow)</span>
+          </button>
+      </div>
 
-              {/* Feature Toggle */}
-              <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
-                  <span className="text-xs font-medium text-navy-900">支出・収入の記録機能を利用する</span>
-                  <button 
-                    onClick={toggleExpenseFeature}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${moneyConfig.enableExpenses ? 'bg-green-500' : 'bg-gray-300'}`}
-                  >
-                      <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${moneyConfig.enableExpenses ? 'left-6' : 'left-1'}`} />
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {/* --- ASSET MANAGEMENT SECTION --- */}
-      <section className="space-y-4">
+      {activeTab === 'stock' ? (
+      /* --- STOCK TAB --- */
+      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
         {/* Total Assets Card */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4">
-             <div className="flex items-center space-x-3">
-                 <div className="bg-navy-50 p-2 rounded-lg text-navy-800">
-                    <DollarSign size={24} />
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+             <div className="flex justify-between items-start mb-4">
+                 <div className="flex items-center space-x-3">
+                     <div className="bg-navy-900 text-white p-2 rounded-lg"><DollarSign size={20} /></div>
+                     <div>
+                        <span className="text-xs text-gray-500 block mb-0.5">総資産</span>
+                        <input 
+                            type="month" 
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="text-sm font-bold text-navy-900 bg-transparent border-none p-0 cursor-pointer focus:ring-0"
+                        />
+                     </div>
                  </div>
-                 <div>
-                    <span className="text-xs text-gray-500 block mb-1">対象月</span>
-                    <input 
-                        type="month" 
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="text-sm bg-navy-50 border border-transparent hover:border-navy-200 rounded p-1 cursor-pointer focus:ring-1 focus:ring-navy-500 font-medium text-navy-900"
-                    />
+                 <div className="text-right">
+                     <span className="text-2xl font-bold text-navy-900 block">¥{totalAssets.toLocaleString()}</span>
                  </div>
              </div>
-             
-             <div className="flex flex-col items-end w-full md:w-auto">
-                 <span className="text-xs text-gray-500 block mb-1">総資産</span>
-                 <div className="flex items-baseline space-x-3">
-                    <span className="text-2xl font-bold text-navy-900">¥{totalAssets.toLocaleString()}</span>
-                 </div>
-                 
-                 <div className="flex space-x-4 mt-1">
-                    {/* Monthly Diff */}
-                    {previousMonthRecord && (
-                        <div className={`flex items-center text-xs font-medium ${monthDiff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {monthDiff >= 0 ? <TrendingUp size={14} className="mr-1"/> : <TrendingDown size={14} className="mr-1"/>}
-                            {monthDiff >= 0 ? '+' : ''}¥{Math.abs(monthDiff).toLocaleString()}
-                            <span className="text-gray-400 ml-1">(前月比)</span>
-                        </div>
-                    )}
-                    {/* Yearly Diff (YoY) */}
-                    {previousYearRecord && (
-                        <div className={`flex items-center text-xs font-medium ${yearDiff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            <CalendarClock size={14} className="mr-1"/>
-                            {yearDiff >= 0 ? '+' : ''}¥{Math.abs(yearDiff).toLocaleString()}
-                            <span className="text-gray-400 ml-1">(前年比)</span>
-                        </div>
-                    )}
-                 </div>
+
+             <div className="flex justify-end space-x-4 text-xs">
+                <div className="flex flex-col items-end">
+                    <span className="text-gray-400">前月比</span>
+                    <span className={`font-bold ${totalAssets >= prevMonthTotal ? 'text-green-500' : 'text-red-500'}`}>
+                        {totalAssets >= prevMonthTotal ? '+' : ''}{(totalAssets - prevMonthTotal).toLocaleString()}
+                    </span>
+                </div>
+                <div className="flex flex-col items-end">
+                    <span className="text-gray-400">前年同月比</span>
+                    <span className={`font-bold ${totalAssets >= prevYearTotal ? 'text-green-500' : 'text-red-500'}`}>
+                        {totalAssets >= prevYearTotal ? '+' : ''}{(totalAssets - prevYearTotal).toLocaleString()}
+                    </span>
+                </div>
              </div>
         </div>
-        
-        {/* Trend Chart & Analysis */}
-        {trendData.length > 1 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-64">
-                    <h3 className="text-xs font-bold text-navy-900 mb-2">資産推移</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={trendData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#243b53" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#243b53" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f4f8"/>
-                            <XAxis dataKey="month" tick={{fontSize: 10}} tickLine={false} axisLine={false} tickFormatter={(val) => val.slice(2)} />
-                            <YAxis tick={{fontSize: 10}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val/10000}万`} width={40} />
-                            <Tooltip 
-                                contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px'}}
-                                itemStyle={{color: '#102a43'}}
-                                formatter={(value: number) => [`¥${value.toLocaleString()}`, '総資産']}
-                            />
-                            <Area type="monotone" dataKey="total" stroke="#102a43" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
 
-                {/* AI Analysis Card */}
-                <div className="md:col-span-1 bg-navy-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 bg-white rounded-full blur-3xl w-32 h-32 transform translate-x-10 -translate-y-10 pointer-events-none"></div>
-                    <div className="relative z-10 flex-1 flex flex-col">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-xs font-bold flex items-center">
-                                <Sparkles size={14} className="text-yellow-400 mr-2"/>
-                                AI 資産レポート
-                            </h3>
-                            <button 
-                                onClick={handleAnalyzeAssets}
-                                disabled={isAnalyzing}
-                                className="bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition-colors"
-                            >
-                                {isAnalyzing ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
-                            </button>
-                        </div>
-                        
-                        <div className="flex-1 text-xs leading-relaxed text-navy-100 overflow-y-auto max-h-40 scrollbar-thin scrollbar-thumb-navy-700 pr-1">
-                            {analysisResult ? (
-                                <div className="whitespace-pre-wrap">{analysisResult}</div>
-                            ) : (
-                                <p className="text-navy-300 italic">
-                                    過去の推移（最大2年分）から、年間トレンドや資産バランスのアドバイスを作成します。
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        <div className="space-y-4">
-            {/* Input Form (Expanded) - Now Full Width */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
-                    <DollarSign size={16} className="mr-1"/>
-                    資産内訳の入力 ({selectedMonth})
+        {/* Input Form */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-navy-900 flex items-center">
+                    <Briefcase size={16} className="mr-1"/>
+                    資産内訳入力
                 </h3>
-                {moneyConfig.assetCategories.length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-4">
-                        右上の設定ボタン<Settings size={12} className="inline"/>から<br/>資産項目（銀行、証券など）を追加してください。
-                    </p>
-                ) : (
-                    <div className="space-y-4">
-                        {moneyConfig.assetCategories.map(cat => (
-                            <div key={cat} className="group">
-                                <label className="text-xs font-bold text-gray-600 mb-1 block group-hover:text-navy-600 transition-colors">{cat}</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">¥</span>
-                                    <input 
-                                        type="number"
-                                        value={currentAssetRecord.values[cat] || ''}
-                                        onChange={(e) => handleAssetValueChange(cat, e.target.value)}
-                                        className="w-full bg-navy-50 rounded-xl py-2 pl-8 pr-3 text-base text-right font-medium text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500 transition-all"
-                                        placeholder="0"
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                <button 
+                    onClick={() => setIsConfigMode(!isConfigMode)}
+                    className="text-gray-400 hover:text-navy-900"
+                >
+                    <Settings size={16} />
+                </button>
             </div>
-
-            {/* Asset Breakdown Chart */}
-            {assetChartData.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 h-auto min-h-[300px]">
-                    <h3 className="text-sm font-bold text-navy-900 mb-2">ポートフォリオ構成</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <PieChart>
-                        <Pie
-                            data={assetChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            dataKey="value"
-                        >
-                            {assetChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Tooltip 
-                            contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px'}}
-                            formatter={(value) => `¥${Number(value).toLocaleString()}`} 
+            
+            {isConfigMode && (
+                <div className="mb-4 p-3 bg-navy-50 rounded-lg space-y-2 border border-navy-100">
+                    <p className="text-xs font-bold text-navy-900">項目の追加・削除</p>
+                    <div className="flex space-x-2">
+                        <input 
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            placeholder="新項目名（例：仮想通貨）"
+                            className="flex-1 p-2 text-xs rounded border border-gray-200"
                         />
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{fontSize: '10px'}}/>
-                        </PieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                        {assetChartData.map((d, i) => (
-                             <div key={d.name} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded-lg">
-                                <div className="flex items-center">
-                                    <div className="w-2 h-2 rounded-full mr-2" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
-                                    <span className="text-gray-600 truncate max-w-[80px]">{d.name}</span>
-                                </div>
-                                <span className="font-bold text-navy-900">{Math.round(d.value / totalAssets * 100)}%</span>
-                             </div>
+                        <button onClick={handleAddCategory} className="bg-navy-900 text-white px-3 py-1 rounded text-xs">追加</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {moneyConfig.assetCategories.map(cat => (
+                            <span key={cat} className="inline-flex items-center text-[10px] bg-white border border-gray-200 px-2 py-1 rounded-full">
+                                {cat}
+                                <button onClick={() => handleDeleteCategory(cat)} className="ml-1 text-gray-400 hover:text-red-500">×</button>
+                            </span>
                         ))}
                     </div>
                 </div>
             )}
-        </div>
-      </section>
 
-      {/* --- EXPENSE MANAGEMENT SECTION (Conditional) --- */}
-      {moneyConfig.enableExpenses && (
-          <section className="space-y-4 border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-bold text-navy-900">日常の支出・収入</h3>
-            
-            {/* Input Form */}
-            <form onSubmit={handleTransactionSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <div className="flex space-x-2 bg-navy-50 p-1 rounded-lg">
-                    <button 
-                        type="button"
-                        onClick={() => setType('expense')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${type === 'expense' ? 'bg-white text-navy-900 shadow-sm' : 'text-gray-500'}`}
-                    >
-                        支出
-                    </button>
-                    <button 
-                        type="button"
-                        onClick={() => setType('income')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${type === 'income' ? 'bg-white text-navy-900 shadow-sm' : 'text-gray-500'}`}
-                    >
-                        収入
-                    </button>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                        <label className="text-xs text-gray-500 ml-1">カテゴリー</label>
-                        <input
-                            type="text"
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            placeholder="例：食費"
-                            className="w-full p-3 bg-navy-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-xs text-gray-500 ml-1">金額</label>
+            <div className="space-y-4">
+                {moneyConfig.assetCategories.map(cat => (
+                    <div key={cat} className="flex flex-col">
+                        <label className="text-xs font-bold text-gray-600 mb-1">{cat}</label>
                         <div className="relative">
-                            <span className="absolute left-3 top-3 text-gray-400 text-sm">¥</span>
-                            <input
+                            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">¥</span>
+                            <input 
                                 type="number"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
+                                value={currentAssetRecord.values[cat] || ''}
+                                onChange={(e) => handleAssetValueChange(cat, e.target.value)}
+                                className="w-full bg-navy-50 rounded-xl py-2 pl-8 pr-3 text-base text-right font-medium text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500 transition-all placeholder-gray-300"
                                 placeholder="0"
-                                className="w-full p-3 pl-7 bg-navy-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
                             />
                         </div>
                     </div>
-                </div>
-                <button type="submit" className="w-full bg-navy-900 text-white py-3 rounded-xl font-medium hover:bg-navy-800 transition-colors flex items-center justify-center space-x-2">
-                    <Plus size={18} />
-                    <span>記録を追加</span>
-                </button>
-            </form>
-            
-            {/* Recent List */}
-            <div className="space-y-3">
-                <h3 className="text-sm font-bold text-navy-900 ml-1">最近の履歴</h3>
-                {transactions.length === 0 && <p className="text-xs text-gray-400 ml-1">履歴はまだありません。</p>}
-                {transactions.slice(-5).reverse().map(t => (
-                    <div key={t.id} className="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center">
-                        <div className="flex items-center space-x-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${t.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                <DollarSign size={18} />
-                            </div>
-                            <div>
-                                <p className="font-medium text-navy-900 text-sm">{t.category}</p>
-                                <p className="text-xs text-gray-400">{new Date(t.date).toLocaleDateString()}</p>
-                            </div>
-                        </div>
-                        <span className={`font-bold ${t.type === 'income' ? 'text-green-600' : 'text-navy-900'}`}>
-                            {t.type === 'income' ? '+' : '-'}¥{t.amount.toLocaleString()}
-                        </span>
-                    </div>
                 ))}
             </div>
-          </section>
+        </div>
+
+        {/* Chart */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 h-64">
+             <h3 className="text-sm font-bold text-navy-900 mb-4">資産推移</h3>
+             <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData}>
+                    <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#102a43" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#102a43" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <XAxis dataKey="month" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{backgroundColor: '#fff', fontSize: '12px', borderRadius: '8px'}} />
+                    <Area type="monotone" dataKey="total" stroke="#102a43" fillOpacity={1} fill="url(#colorTotal)" />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
+      </div>
+      ) : (
+      /* --- FLOW TAB --- */
+      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+          {/* Income & Overview */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
+                  <Briefcase size={16} className="mr-1"/>
+                  収入設定
+              </h3>
+              <div className="space-y-1">
+                  <label className="text-xs text-gray-500 ml-1">手取り月収</label>
+                  <div className="relative">
+                      <span className="absolute left-3 top-3 text-gray-400 text-sm">¥</span>
+                      <input 
+                          type="number" 
+                          value={budgetProfile.monthlyIncome || ''} 
+                          onChange={(e) => handleIncomeChange(e.target.value)}
+                          placeholder="0" 
+                          className="w-full p-3 pl-7 bg-navy-50 rounded-xl text-lg font-bold text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500" 
+                      />
+                  </div>
+              </div>
+          </div>
+
+          {/* Fixed Costs List */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-navy-900 flex items-center">
+                      <Settings size={16} className="mr-1"/>
+                      固定費 (毎月必ずかかるお金)
+                  </h3>
+                  <span className="text-xs font-bold text-navy-900">計 ¥{totalFixedCosts.toLocaleString()}</span>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                  {budgetProfile.fixedCosts.map(item => (
+                      <div key={item.id} className="flex justify-between items-center bg-navy-50 p-2.5 rounded-lg">
+                          <span className="text-sm text-navy-800 font-medium">{item.name}</span>
+                          <div className="flex items-center space-x-3">
+                              <span className="text-sm text-navy-900">¥{item.amount.toLocaleString()}</span>
+                              <button onClick={() => handleDeleteFixedCost(item.id)} className="text-gray-400 hover:text-red-500">
+                                  <Trash2 size={14} />
+                              </button>
+                          </div>
+                      </div>
+                  ))}
+                  {budgetProfile.fixedCosts.length === 0 && <p className="text-xs text-gray-400 text-center py-2">固定費が登録されていません</p>}
+              </div>
+
+              {/* Add New Fixed Cost */}
+              <div className="flex space-x-2 border-t border-gray-100 pt-3">
+                  <input 
+                      className="flex-[2] p-2 bg-gray-50 rounded-lg text-xs border border-gray-200"
+                      placeholder="項目名 (例: 家賃)"
+                      value={newFixedCostName}
+                      onChange={e => setNewFixedCostName(e.target.value)}
+                  />
+                  <input 
+                      type="number"
+                      className="flex-1 p-2 bg-gray-50 rounded-lg text-xs border border-gray-200"
+                      placeholder="金額"
+                      value={newFixedCostAmount}
+                      onChange={e => setNewFixedCostAmount(e.target.value)}
+                  />
+                  <button 
+                      onClick={handleAddFixedCost}
+                      className="bg-navy-900 text-white px-3 rounded-lg flex items-center justify-center"
+                  >
+                      <Plus size={16} />
+                  </button>
+              </div>
+          </div>
+
+          {/* Variable Budget */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
+                  <Wallet size={16} className="mr-1"/>
+                  変動費 (毎月の予算枠)
+              </h3>
+              <div className="space-y-1">
+                  <label className="text-xs text-gray-500 ml-1">食費・交際費などの想定合計</label>
+                  <div className="relative">
+                      <span className="absolute left-3 top-3 text-gray-400 text-sm">¥</span>
+                      <input 
+                          type="number" 
+                          value={budgetProfile.variableBudget || ''} 
+                          onChange={(e) => handleVariableBudgetChange(e.target.value)}
+                          placeholder="0" 
+                          className="w-full p-3 pl-7 bg-navy-50 rounded-xl text-lg font-bold text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500" 
+                      />
+                  </div>
+              </div>
+          </div>
+
+          {/* Flow Visualization */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-sm font-bold text-navy-900 mb-2">収支バランス・シミュレーション</h3>
+              <div className="h-40 w-full mb-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <BarChart layout="vertical" data={flowData}>
+                          <XAxis type="number" hide />
+                          <YAxis dataKey="name" type="category" width={70} tick={{fontSize: 10}} />
+                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{fontSize: '12px'}} formatter={(value: number) => `¥${value.toLocaleString()}`} />
+                          <Bar dataKey="amount" barSize={20} radius={[0, 4, 4, 0]}>
+                            {flowData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                      </BarChart>
+                  </ResponsiveContainer>
+              </div>
+              
+              <div className="flex justify-between items-center text-xs bg-navy-50 p-3 rounded-xl border border-navy-100">
+                   <div className="flex items-center space-x-2">
+                       <TrendingUp size={14} className="text-green-600"/>
+                       <span className="text-gray-600">毎月の想定余剰金（投資力）</span>
+                   </div>
+                   <span className={`font-bold text-lg ${surplus > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                       ¥{surplus.toLocaleString()}
+                   </span>
+              </div>
+          </div>
+      </div>
       )}
 
+      {/* AI Analysis Button (Shared) */}
+      <div className="pt-2">
+          {!analysisResult ? (
+            <button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing}
+                className="w-full bg-gradient-to-r from-navy-900 to-navy-700 text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+            >
+                {isAnalyzing ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18} className="text-yellow-400"/>}
+                <span>AIで家計構造と資産を分析する</span>
+            </button>
+          ) : (
+            <div className="bg-navy-900 text-white p-5 rounded-2xl shadow-lg relative overflow-hidden animate-in zoom-in-95">
+                 <div className="absolute top-0 right-0 p-10 opacity-10 bg-white rounded-full blur-3xl w-40 h-40 transform translate-x-10 -translate-y-10"></div>
+                 <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-3">
+                        <h3 className="font-bold flex items-center"><Sparkles size={16} className="text-yellow-400 mr-2"/>AI FPレポート</h3>
+                        <button onClick={() => setAnalysisResult(null)} className="text-gray-400 hover:text-white"><Trash2 size={16}/></button>
+                    </div>
+                    <div className="text-sm leading-relaxed text-navy-50 whitespace-pre-wrap">
+                        {analysisResult}
+                    </div>
+                 </div>
+            </div>
+          )}
+      </div>
     </div>
   );
 };
