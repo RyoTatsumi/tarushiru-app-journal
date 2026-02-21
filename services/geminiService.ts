@@ -2,7 +2,15 @@ import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/gen
 import { UserProfile, JournalEntry } from "../types";
 
 // Initialize the Google GenAI client
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+// import.meta.env (Vite標準) → process.env (defineによるフォールバック) の順で取得
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY ||
+               (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) ||
+               "";
+
+if (!apiKey) {
+  console.error("[TARUSHIRU] VITE_GEMINI_API_KEY が設定されていません。Vercelの環境変数を確認してください。");
+}
+
 const ai = new GoogleGenAI({
   apiKey,
   apiVersion: 'v1'
