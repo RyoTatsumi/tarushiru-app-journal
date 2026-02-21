@@ -13,7 +13,6 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({
   apiKey,
-  apiVersion: 'v1'
 });
 
 // gemini-2.0-flash: 最新の高速モデル。1.5-flashより安定性・レートリミットが改善
