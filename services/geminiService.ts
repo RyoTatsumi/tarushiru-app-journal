@@ -15,8 +15,8 @@ const ai = new GoogleGenAI({
   apiKey,
 });
 
-// gemini-2.0-flash: 最新の高速モデル。1.5-flashより安定性・レートリミットが改善
-const MODEL_FAST = 'gemini-2.0-flash';
+// gemini-2.0-flash-lite: 軽量モデル。無料枠の消費を大幅に抑えつつ十分な品質を維持
+const MODEL_FAST = 'gemini-2.0-flash-lite';
 
 // 安全性設定：日記の内容を制限しないようBLOCK_NONEを設定
 const SAFETY_SETTINGS = [
