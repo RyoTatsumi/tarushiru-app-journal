@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { anthropic, MODEL } from '@/lib/anthropic';
+import { getAnthropicClient, MODEL } from '@/lib/anthropic';
 import { callWithRetry } from '@/lib/retry';
 
 export async function POST(request: NextRequest) {
@@ -18,7 +18,7 @@ StrengthsFinder 強み: ${strengths?.join(', ') || '未設定'}
 4. 理想的な働き方・環境`;
 
     const response = await callWithRetry(async () => {
-      return await anthropic.messages.create({
+      return await getAnthropicClient().messages.create({
         model: MODEL,
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],

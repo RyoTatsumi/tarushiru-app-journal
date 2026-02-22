@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { anthropic, MODEL } from '@/lib/anthropic';
+import { getAnthropicClient, MODEL } from '@/lib/anthropic';
 import { callWithRetry } from '@/lib/retry';
 
 export async function POST(request: NextRequest) {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     `;
 
     const result = await callWithRetry(async () => {
-      return await anthropic.messages.create({
+      return await getAnthropicClient().messages.create({
         model: MODEL,
         max_tokens: 1024,
         system: 'あなたはJSON形式でのみ応答するAIです。Markdownのコードブロック（```）は絶対に使用せず、純粋なJSONオブジェクトのみを返してください。',

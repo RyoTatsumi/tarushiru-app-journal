@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { anthropic, MODEL } from '@/lib/anthropic';
+import { getAnthropicClient, MODEL } from '@/lib/anthropic';
 import { callWithRetry } from '@/lib/retry';
 
 export async function POST(request: NextRequest) {
@@ -15,7 +15,7 @@ ${JSON.stringify(profileData, null, 2)}
 200文字程度で、温かく知性的なトーンで、その人の本質を捉えた文章を作成してください。`;
 
     const response = await callWithRetry(async () => {
-      return await anthropic.messages.create({
+      return await getAnthropicClient().messages.create({
         model: MODEL,
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
