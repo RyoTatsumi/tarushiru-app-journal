@@ -1,9 +1,10 @@
+'use client';
 
 import React, { useState, useMemo } from 'react';
-import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem } from '../types';
+import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem } from '@/types';
 import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
 import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase } from 'lucide-react';
-import { analyzeAssetTrends } from '../services/geminiService';
+import { analyzeAssetTrends } from '@/lib/aiService';
 
 interface MoneyProps {
   assets: AssetRecord[];
@@ -404,7 +405,7 @@ export const Money: React.FC<MoneyProps> = ({
                       <BarChart layout="vertical" data={flowData}>
                           <XAxis type="number" hide />
                           <YAxis dataKey="name" type="category" width={70} tick={{fontSize: 10}} />
-                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{fontSize: '12px'}} formatter={(value: number) => `¥${value.toLocaleString()}`} />
+                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{fontSize: '12px'}} formatter={(value) => `¥${Number(value).toLocaleString()}`} />
                           <Bar dataKey="amount" barSize={20} radius={[0, 4, 4, 0]}>
                             {flowData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.fill} />

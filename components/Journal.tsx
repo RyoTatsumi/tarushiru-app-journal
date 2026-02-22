@@ -1,7 +1,8 @@
+'use client';
 
 import React, { useState, useMemo } from 'react';
-import { JournalEntry, UserProfile } from '../types';
-import { analyzeJournalEntry, analyzeJournalTrends } from '../services/geminiService';
+import { JournalEntry, UserProfile } from '@/types';
+import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X, Quote, Clock, Trash2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 

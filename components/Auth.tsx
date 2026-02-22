@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { Mail, UserPlus, LogIn } from 'lucide-react';
 

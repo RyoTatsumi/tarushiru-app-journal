@@ -1,19 +1,20 @@
+'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ViewState, AppData, JournalEntry, Goal, UserProfile, AssetRecord, MoneyConfig, BudgetProfile } from './types';
-import { Navigation } from './components/Navigation';
-import { Journal } from './components/Journal';
-import { Money } from './components/Money';
-import { Profile } from './components/Profile';
-import { Goals } from './components/Goals';
-import { Auth } from './components/Auth';
-import { PublicProfile } from './components/PublicProfile';
+import { ViewState, AppData, JournalEntry, UserProfile } from '@/types';
+import { Navigation } from '@/components/Navigation';
+import { Journal } from '@/components/Journal';
+import { Money } from '@/components/Money';
+import { Profile } from '@/components/Profile';
+import { Goals } from '@/components/Goals';
+import { Auth } from '@/components/Auth';
+import { PublicProfile } from '@/components/PublicProfile';
 
 const INITIAL_DATA: AppData = {
   user: null,
   journal: [],
   goals: [],
-  assets: [], 
+  assets: [],
   moneyConfig: {
       assetCategories: ['現金・預金', '株式・投信', '暗号資産'],
   },
@@ -24,7 +25,7 @@ const INITIAL_DATA: AppData = {
   }
 };
 
-function App() {
+export function AppShell() {
   const [view, setView] = useState<ViewState>(ViewState.AUTH);
   const [data, setData] = useState<AppData>(INITIAL_DATA);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -61,7 +62,7 @@ function App() {
       try {
         const parsedData = JSON.parse(saved);
         const mergedData: AppData = { ...INITIAL_DATA, ...parsedData };
-        
+
         if (mergedData.user) {
             mergedData.user.strengths = Array.isArray(mergedData.user.strengths) ? mergedData.user.strengths : [];
             mergedData.user.careerStrengths = mergedData.user.careerStrengths || '';
@@ -109,7 +110,6 @@ function App() {
       setView(ViewState.PROFILE);
       setSharedProfile(null);
       setIsPreviewingSelf(false);
-      // Clean up hash if it exists
       if (window.location.hash.startsWith('#profile=')) {
           window.history.pushState("", document.title, window.location.pathname + window.location.search);
       }
@@ -133,11 +133,11 @@ function App() {
 
   if (view === ViewState.PUBLIC_PROFILE && sharedProfile) {
       return (
-          <PublicProfile 
-              profile={sharedProfile} 
+          <PublicProfile
+              profile={sharedProfile}
               isPreview={isPreviewingSelf}
               onBack={handleExitPublic}
-              onStartDiagnosis={() => setView(ViewState.PROFILE)} 
+              onStartDiagnosis={() => setView(ViewState.PROFILE)}
           />
       );
   }
@@ -168,10 +168,10 @@ function App() {
           {view === ViewState.MONEY && <Money assets={data.assets} onUpdateAssets={(a) => setData(p => ({...p, assets: a}))} moneyConfig={data.moneyConfig} onUpdateConfig={(c) => setData(p => ({...p, moneyConfig: c}))} budgetProfile={data.budgetProfile} onUpdateBudget={(b) => setData(p => ({...p, budgetProfile: b}))} />}
           {view === ViewState.GOALS && <Goals goals={data.goals} onUpdateGoals={(g) => setData(p => ({...p, goals: g}))} />}
           {view === ViewState.PROFILE && (
-            <Profile 
-              profile={data.user} 
-              onUpdateProfile={(p) => setData(prev => ({...prev, user: p}))} 
-              onResetData={() => {localStorage.removeItem('tarushiru_data'); window.location.reload();}} 
+            <Profile
+              profile={data.user}
+              onUpdateProfile={(p) => setData(prev => ({...prev, user: p}))}
+              onResetData={() => {localStorage.removeItem('tarushiru_data'); window.location.reload();}}
               onPreviewPublic={handlePreviewSelf}
               onImportData={handleImportData}
             />
@@ -182,5 +182,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

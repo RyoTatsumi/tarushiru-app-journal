@@ -1,8 +1,9 @@
+'use client';
 
 import React, { useState } from 'react';
-import { Goal, GoalCategory } from '../types';
+import { Goal, GoalCategory } from '@/types';
 import { Target, CheckCircle2, Circle, Sparkles, Loader2, Briefcase, Heart, Sun, Clock, Edit2, Check, X } from 'lucide-react';
-import { getGoalCoaching } from '../services/geminiService';
+import { getGoalCoaching } from '@/lib/aiService';
 
 interface GoalsProps {
   goals: Goal[];

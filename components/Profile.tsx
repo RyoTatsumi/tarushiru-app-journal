@@ -1,7 +1,9 @@
 
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, GeneticAnalysis, AppData } from '../types';
-import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '../services/geminiService';
+import { UserProfile, GeneticAnalysis, AppData } from '@/types';
+import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '@/lib/aiService';
 import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database } from 'lucide-react';
 
 interface ProfileProps {

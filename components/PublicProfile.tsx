@@ -1,6 +1,7 @@
+'use client';
 
 import React from 'react';
-import { UserProfile } from '../types';
+import { UserProfile } from '@/types';
 import { User, Trophy, Heart, Target, Zap, Smile, Briefcase, Dna, ArrowRight, Share2, Sparkles, Edit2, ChevronLeft, Award, History } from 'lucide-react';
 
 interface PublicProfileProps {

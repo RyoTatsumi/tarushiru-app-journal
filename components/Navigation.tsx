@@ -1,7 +1,8 @@
+'use client';
 
 import React from 'react';
 import { Book, Wallet, Target, User, LogOut } from 'lucide-react';
-import { ViewState } from '../types';
+import { ViewState } from '@/types';
 
 interface NavigationProps {
   currentView: ViewState;
