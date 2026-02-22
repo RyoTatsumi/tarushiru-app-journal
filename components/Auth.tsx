@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, UserPlus, LogIn } from 'lucide-react';
+import { Mail, UserPlus, LogIn, Loader2 } from 'lucide-react';
 
 interface AuthProps {
-  onLogin: (email: string, password: string) => void;
+  onLogin: (email: string, password: string) => Promise<void>;
   hasExistingAccount: boolean;
   error?: string;
 }
@@ -12,11 +12,17 @@ interface AuthProps {
 export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email && password) {
-      onLogin(email, password);
+      setIsLoading(true);
+      try {
+        await onLogin(email, password);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -36,20 +42,20 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
                         </feMerge>
                     </filter>
                 </defs>
-                <path 
-                    d="M50 10C25 10 10 30 10 50C10 75 30 90 55 90C80 90 90 70 90 50C90 30 75 15 60 10" 
-                    fill="none" 
-                    stroke="white" 
-                    strokeWidth="6" 
+                <path
+                    d="M50 10C25 10 10 30 10 50C10 75 30 90 55 90C80 90 90 70 90 50C90 30 75 15 60 10"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="6"
                     strokeLinecap="round"
                     style={{filter: 'url(#glow)'}}
                     opacity="0.9"
                 />
-                <path 
-                    d="M50 15C30 15 15 35 15 50" 
-                    fill="none" 
-                    stroke="white" 
-                    strokeWidth="2" 
+                <path
+                    d="M50 15C30 15 15 35 15 50"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2"
                     strokeLinecap="round"
                     opacity="0.5"
                 />
@@ -64,7 +70,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
           <h2 className="text-center text-lg font-medium mb-4 text-white">
             {hasExistingAccount ? 'おかえりなさい' : 'はじめる'}
           </h2>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
               <Mail className="absolute left-4 top-3.5 text-navy-300" size={18} />
@@ -97,10 +103,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
 
             <button
               type="submit"
-              className="w-full bg-white text-navy-900 py-3.5 rounded-xl font-bold hover:bg-gray-100 transition-colors flex items-center justify-center space-x-2 group"
+              disabled={isLoading}
+              className="w-full bg-white text-navy-900 py-3.5 rounded-xl font-bold hover:bg-gray-100 transition-colors flex items-center justify-center space-x-2 group disabled:opacity-70"
             >
-              {hasExistingAccount ? <LogIn size={18} /> : <UserPlus size={18} />}
-              <span>{hasExistingAccount ? 'ログイン' : 'アカウント作成して開始'}</span>
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : hasExistingAccount ? (
+                <LogIn size={18} />
+              ) : (
+                <UserPlus size={18} />
+              )}
+              <span>{isLoading ? '認証中...' : hasExistingAccount ? 'ログイン' : 'アカウント作成して開始'}</span>
             </button>
           </form>
         </div>

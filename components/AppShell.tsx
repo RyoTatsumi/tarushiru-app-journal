@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ViewState, AppData, JournalEntry, UserProfile } from '@/types';
+import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { Navigation } from '@/components/Navigation';
 import { Journal } from '@/components/Journal';
 import { Money } from '@/components/Money';
@@ -9,6 +10,9 @@ import { Profile } from '@/components/Profile';
 import { Goals } from '@/components/Goals';
 import { Auth } from '@/components/Auth';
 import { PublicProfile } from '@/components/PublicProfile';
+import { Dashboard } from '@/components/Dashboard';
+import { BackupReminder } from '@/components/BackupReminder';
+import { Onboarding } from '@/components/Onboarding';
 
 const INITIAL_DATA: AppData = {
   user: null,
@@ -25,6 +29,8 @@ const INITIAL_DATA: AppData = {
   }
 };
 
+const ONBOARDING_KEY = 'tarushiru_onboarding_done';
+
 export function AppShell() {
   const [view, setView] = useState<ViewState>(ViewState.AUTH);
   const [data, setData] = useState<AppData>(INITIAL_DATA);
@@ -32,6 +38,7 @@ export function AppShell() {
   const [authError, setAuthError] = useState<string | undefined>(undefined);
   const [sharedProfile, setSharedProfile] = useState<UserProfile | null>(null);
   const [isPreviewingSelf, setIsPreviewingSelf] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Detect public profile from URL hash
   useEffect(() => {
@@ -82,15 +89,48 @@ export function AppShell() {
     }
   }, [data, isInitialized]);
 
-  const handleLogin = (email: string, password: string) => {
+  const handleLogin = async (email: string, password: string) => {
+    setAuthError(undefined);
+
     if (!data.user) {
-        setData(prev => ({ ...prev, user: { name: email.split('@')[0], email, password, mbti: '', strengths: [], skills: [], history: '' } }));
-        setView(ViewState.JOURNAL);
-    } else if (data.user.password === password) {
-        setView(ViewState.JOURNAL);
+      // New account: hash the password
+      const hashedPassword = await hashPassword(password);
+      setData(prev => ({
+        ...prev,
+        user: { name: email.split('@')[0], email, password: hashedPassword, mbti: '', strengths: [], skills: [], history: '' }
+      }));
+
+      // Show onboarding for new users
+      const onboardingDone = localStorage.getItem(ONBOARDING_KEY);
+      if (!onboardingDone) {
+        setShowOnboarding(true);
+      }
+
+      setView(ViewState.DASHBOARD);
     } else {
+      // Existing account: verify password
+      const storedPassword = data.user.password || '';
+      const isValid = await verifyPassword(password, storedPassword);
+
+      if (isValid) {
+        // Migrate plain-text password to hashed if needed
+        if (!storedPassword.includes(':') || storedPassword.length < 40) {
+          const hashedPassword = await hashPassword(password);
+          setData(prev => ({
+            ...prev,
+            user: prev.user ? { ...prev.user, password: hashedPassword } : prev.user
+          }));
+        }
+        setView(ViewState.DASHBOARD);
+      } else {
         setAuthError('パスワードが違います');
+      }
     }
+  };
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem(ONBOARDING_KEY, 'true');
+    setShowOnboarding(false);
   };
 
   const handlePreviewSelf = () => {
@@ -129,7 +169,16 @@ export function AppShell() {
       }));
   };
 
+  const handleDashboardNavigate = (target: 'JOURNAL' | 'GOALS' | 'MONEY') => {
+    setView(ViewState[target]);
+  };
+
   if (!isInitialized) return null;
+
+  // Onboarding overlay
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
 
   if (view === ViewState.PUBLIC_PROFILE && sharedProfile) {
       return (
@@ -150,12 +199,15 @@ export function AppShell() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-hidden flex flex-col">
         <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-            <h1 className="font-bold text-navy-900 cursor-pointer" onClick={() => setView(ViewState.JOURNAL)}>TARUSHIRU</h1>
+            <h1 className="font-bold text-navy-900 cursor-pointer" onClick={() => setView(ViewState.DASHBOARD)}>TARUSHIRU</h1>
             <div className="w-8 h-8 bg-navy-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
                 {data.user?.name?.charAt(0).toUpperCase()}
             </div>
         </div>
         <main className="p-6 flex-1 overflow-y-auto">
+          {view === ViewState.DASHBOARD && (
+            <Dashboard data={data} onNavigate={handleDashboardNavigate} />
+          )}
           {view === ViewState.JOURNAL && (
             <Journal
               entries={data.journal}
@@ -178,6 +230,9 @@ export function AppShell() {
           )}
         </main>
         <Navigation currentView={view} setView={setView} onLogout={() => setView(ViewState.AUTH)} />
+
+        {/* Backup Reminder */}
+        <BackupReminder data={data} />
       </div>
     </div>
   );

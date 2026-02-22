@@ -1,11 +1,12 @@
 
 export enum ViewState {
   AUTH = 'AUTH',
+  DASHBOARD = 'DASHBOARD',
   JOURNAL = 'JOURNAL',
   MONEY = 'MONEY',
   GOALS = 'GOALS',
   PROFILE = 'PROFILE',
-  PUBLIC_PROFILE = 'PUBLIC_PROFILE' // 追加：共有プロフィール閲覧モード
+  PUBLIC_PROFILE = 'PUBLIC_PROFILE'
 }
 
 export interface EmotionScore {
