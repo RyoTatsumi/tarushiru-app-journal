@@ -2,27 +2,116 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAnthropicClient, MODEL } from '@/lib/anthropic';
 import { callWithRetry } from '@/lib/retry';
 
+// テーマTaxonomy（#2改善）
+const THEME_TAXONOMY = [
+  '仕事・キャリア', '人間関係', '健康・体調', 'お金・資産', '自己成長',
+  '家族', '恋愛・パートナー', '趣味・楽しみ', '学び・スキル', '将来・不安',
+  '達成・成功', '疲労・休息', '感謝・幸福', '孤独・寂しさ', '変化・転機',
+  '日常・ルーティン', '創造・表現', '社会・貢献'
+];
+
+// tool_use スキーマ（#5改善）
+const journalAnalysisTool = {
+  name: 'submit_journal_analysis',
+  description: '日記エントリーの分析結果をJSON形式で返す',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      emotions: {
+        type: 'object' as const,
+        description: 'コア感情スコア（0.0〜1.0）',
+        properties: {
+          joy: { type: 'number' as const }, anger: { type: 'number' as const },
+          sadness: { type: 'number' as const }, anxiety: { type: 'number' as const },
+          calm: { type: 'number' as const },
+        },
+        required: ['joy', 'anger', 'sadness', 'anxiety', 'calm'],
+      },
+      subEmotions: {
+        type: 'object' as const,
+        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ',
+        properties: {
+          fulfillment: { type: 'number' as const }, loneliness: { type: 'number' as const },
+          gratitude: { type: 'number' as const }, frustration: { type: 'number' as const },
+          hope: { type: 'number' as const }, confusion: { type: 'number' as const },
+        },
+      },
+      themes: {
+        type: 'array' as const,
+        items: { type: 'string' as const },
+        description: `テーマタグ（以下のリストから2〜4つ選択）: ${THEME_TAXONOMY.join(', ')}`,
+      },
+      actions: {
+        type: 'array' as const,
+        items: { type: 'string' as const },
+        description: '記録された行動事実',
+      },
+      aiComment: {
+        type: 'string' as const,
+        description: '150〜200文字のパーソナライズされた温かいフィードバック。問いかけを1つ含む。',
+      },
+      coachingQuestion: {
+        type: 'string' as const,
+        description: 'ユーザーへの内省を促す問いかけ（1文）',
+      },
+    },
+    required: ['emotions', 'themes', 'actions', 'aiComment'],
+  },
+};
+
 export async function POST(request: NextRequest) {
   try {
-    const { text, profile, pastEntries } = await request.json();
+    const { text, profile, pastEntries, goals, aiMemory } = await request.json();
 
+    // プロフィールコンテキスト
     const profileContext = profile ? `
       [ユーザーの「本質」データ]
       - 名前: ${profile.name || 'ユーザー'}
       - 思考特性(MBTI): ${profile.mbti || '不明'} (このタイプ特有の思考癖や葛藤を考慮すること)
-      - 才能の源泉(Strengths): ${profile.strengths?.join(', ') || '不明'} (この強みがどう状況に影響したか、あるいは活かせるか)
-      - 生物学的特性(遺伝子/体質): ${profile.geneticAnalysis?.determinedType || '不明'} (エネルギーレベルやストレス耐性を考慮し、無理のない提案を)
+      - 才能の源泉(Strengths): ${profile.strengths?.join(', ') || '不明'} (この強みがどう状況に影響したか)
+      - 生物学的特性(遺伝子/体質): ${profile.geneticAnalysis?.determinedType || '不明'} (エネルギーレベルやストレス耐性を考慮)
       - 人生の核となる価値観: ${profile.values || '不明'} (今回の感情は、この価値観との合致・乖離が原因ではないか)
+      - キャリアの強み: ${profile.careerStrengths || '不明'}
+      - 興味関心: ${profile.interests || '不明'}
     ` : 'ユーザー特性: 未設定';
 
+    // 過去エントリーコンテキスト（感情スコア + テーマも含む）（#1改善）
     const historyContext = pastEntries && pastEntries.length > 0
       ? `
       [直近のストーリーライン（文脈）]
-      ${pastEntries.map((e: { date: string; content: string }) => `- ${new Date(e.date).toLocaleDateString()}: ${e.content.slice(0, 150)}...`).join('\n')}
+      ${pastEntries.map((e: { date: string; content: string; analysis?: { emotions?: Record<string, number>; themes?: string[] }; aiComment?: string }) => {
+        const emotionSummary = e.analysis?.emotions
+          ? `[感情: 喜${(e.analysis.emotions.joy * 10).toFixed(0)} 穏${(e.analysis.emotions.calm * 10).toFixed(0)} 不安${(e.analysis.emotions.anxiety * 10).toFixed(0)}]`
+          : '';
+        const themes = e.analysis?.themes?.join(', ') || '';
+        return `- ${new Date(e.date).toLocaleDateString()}: ${e.content.slice(0, 200)} ${emotionSummary} [テーマ: ${themes}]`;
+      }).join('\n')}
 
-      ※ 重要指示: 過去の悩みとの関連、成長の兆し、あるいは繰り返されるパターンがあれば、自然な会話の中で「伏線回収」のように触れてください。
+      前回のAIコメント: ${pastEntries[pastEntries.length - 1]?.aiComment?.slice(0, 150) || 'なし'}
+
+      ※ 重要: 過去の悩みとの関連、成長の兆し、パターンがあれば「伏線回収」のように触れてください。
       `
       : '過去の文脈: 特になし（今回が初めて、または久しぶりの記録）';
+
+    // 目標コンテキスト（#1改善 - Goals連携）
+    const goalsContext = goals && goals.length > 0
+      ? `
+      [現在の目標]
+      ${goals.filter((g: { progress: number }) => g.progress < 100).map((g: { title: string; category: string; progress: number; description?: string }) =>
+        `- [${g.category}] ${g.title} (進捗: ${g.progress}%)${g.description ? ` - ${g.description}` : ''}`
+      ).join('\n')}
+      ※ 今回の日記内容が目標に関連していれば、自然に言及してください。
+      `
+      : '';
+
+    // AIメモリコンテキスト（#6改善）
+    const memoryContext = aiMemory
+      ? `
+      [これまでの重要パターン]
+      ${aiMemory.patterns?.join('\n') || 'なし'}
+      前回の問いかけ: ${aiMemory.lastQuestion || 'なし'}
+      `
+      : '';
 
     const prompt = `
       あなたは、ユーザーの人生を深く理解し、魂の成長を支援する「専属ライフ・パートナーAI」です。
@@ -32,63 +121,66 @@ export async function POST(request: NextRequest) {
 
       ${historyContext}
 
+      ${goalsContext}
+
+      ${memoryContext}
+
       [今回の記録]
       "${text}"
 
       ## 生成の指針
-      1. **「点」ではなく「線」で捉える**: 今回の出来事を単体で評価せず、過去の流れやユーザーの人生という大きな文脈の中に位置づけてコメントしてください。「以前悩んでいた〇〇について、変化がありましたね」といった言及を歓迎します。
-      2. **特性への深い理解と受容**:
-         - 専門用語（"MBTIが〜"など）は使わず、「深く思考を巡らせるあなただからこそ…」「調和を大切にするあまり…」といった自然な表現で特性に触れてください。
-         - 遺伝子特性（体質）を考慮し、無理のない休息や、エネルギーの注ぎ方を提案してください。
-      3. **魂への問いかけ**:
-         - 単なる共感で終わらせず、「もしかすると、今の疲れは〇〇を大切にしたいというサインかもしれません」といった、一歩踏み込んだ「気づき」や「問い」を1つ投げかけてください。
-      4. **トーン**:
-         - 温かく、知性的で、決して批判せず、絶対的な味方であること。
-         - 「〜しましょう」「〜すべきです」という指示ではなく、「〜という視点もあるかもしれません」という提案型で。
+      1. **「点」ではなく「線」で捉える**: 今回の出来事を単体で評価せず、過去の流れやユーザーの人生という大きな文脈の中に位置づけてコメントしてください。
+      2. **特性への深い理解と受容**: 専門用語は使わず、「深く思考を巡らせるあなただからこそ…」といった自然な表現で特性に触れてください。
+      3. **魂への問いかけ**: 共感で終わらせず、一歩踏み込んだ「気づき」や「問い」を1つ投げかけてください。
+      4. **目標との接続**: 日記の内容が目標に関連していれば、自然に触れてください。
+      5. **トーン**: 温かく、知性的で、決して批判せず、絶対的な味方であること。提案型で。
 
-      ## 出力フォーマット (JSON)
-      必ず以下のJSON形式で出力してください。Markdownのコードブロックは不要です。
-      {
-        "emotions": { "joy": 0.0〜1.0, "anger": 0.0〜1.0, "sadness": 0.0〜1.0, "anxiety": 0.0〜1.0, "calm": 0.0〜1.0 },
-        "themes": ["タグ1", "タグ2", "タグ3"],
-        "actions": ["行動事実1", "行動事実2"],
-        "aiComment": "150文字〜200文字程度の、心に響くパーソナライズされたフィードバック"
-      }
+      ## テーマの選択
+      以下のリストから2〜4つ選んでください: ${THEME_TAXONOMY.join(', ')}
+
+      submit_journal_analysis ツールを使って結果を返してください。
     `;
 
     const result = await callWithRetry(async () => {
       return await getAnthropicClient().messages.create({
         model: MODEL,
         max_tokens: 1024,
-        system: 'あなたはJSON形式でのみ応答するAIです。Markdownのコードブロック（```）は絶対に使用せず、純粋なJSONオブジェクトのみを返してください。',
+        tools: [journalAnalysisTool],
+        tool_choice: { type: 'tool', name: 'submit_journal_analysis' },
         messages: [{ role: 'user', content: prompt }],
       });
     }, 'analyzeJournalEntry');
 
-    const rawText = result.content[0].type === 'text' ? result.content[0].text : '{}';
-    const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    // tool_use レスポンスからデータ抽出
+    const toolBlock = result.content.find((b: { type: string }) => b.type === 'tool_use');
+    let parsed = toolBlock && 'input' in toolBlock ? toolBlock.input as Record<string, unknown> : null;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(cleanedText);
-    } catch {
-      console.warn('JSON parse failed, using fallback structure.');
-      parsed = {};
+    // フォールバック: テキストレスポンスの場合
+    if (!parsed) {
+      const rawText = result.content.find((b: { type: string }) => b.type === 'text');
+      if (rawText && 'text' in rawText) {
+        try {
+          const cleaned = (rawText.text as string).replace(/```json/g, '').replace(/```/g, '').trim();
+          parsed = JSON.parse(cleaned);
+        } catch {
+          parsed = {};
+        }
+      } else {
+        parsed = {};
+      }
     }
 
     // フォールバック処理
-    if (!parsed.aiComment || typeof parsed.aiComment !== 'string' || parsed.aiComment.trim() === '') {
+    if (!parsed || !parsed.aiComment || typeof parsed.aiComment !== 'string' || (parsed.aiComment as string).trim() === '') {
+      if (!parsed) parsed = {};
       const name = profile?.name || 'あなた';
       const hour = new Date().getHours();
       const timeGreeting = hour < 10 ? 'おはようございます。' : hour > 18 ? '今日もお疲れ様でした。' : 'こんにちは。';
-
       const fallbackMessages = [
         `${timeGreeting} ${name}さんの言葉を受け取りました。書くことで整理される感情もあります。焦らず、ご自身のペースで進んでいきましょう。`,
         `記録に残してくださりありがとうございます。${name}さんが日々感じていることは、決して無駄ではありません。静かな時間を持って、心と体を労ってくださいね。`,
         `気持ちを吐き出すことは、自分自身を大切にする行為です。${name}さんの強みは、こうして自分と向き合えることかもしれませんね。`,
-        `${timeGreeting} ${name}さんの正直な気持ちに触れさせていただきました。今は答えが出なくても、書き留めたことが未来のヒントになるはずです。`
       ];
-
       parsed.aiComment = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
     }
 

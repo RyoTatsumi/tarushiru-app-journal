@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { ViewState, AppData, JournalEntry, UserProfile } from '@/types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ViewState, AppData, JournalEntry, UserProfile, AIMemory } from '@/types';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { Navigation } from '@/components/Navigation';
 import { Journal } from '@/components/Journal';
@@ -13,6 +13,7 @@ import { PublicProfile } from '@/components/PublicProfile';
 import { Dashboard } from '@/components/Dashboard';
 import { BackupReminder } from '@/components/BackupReminder';
 import { Onboarding } from '@/components/Onboarding';
+import { ToastProvider, useToast } from '@/components/Toast';
 
 const INITIAL_DATA: AppData = {
   user: null,
@@ -31,7 +32,8 @@ const INITIAL_DATA: AppData = {
 
 const ONBOARDING_KEY = 'tarushiru_onboarding_done';
 
-export function AppShell() {
+function AppShellInner() {
+  const { showToast } = useToast();
   const [view, setView] = useState<ViewState>(ViewState.AUTH);
   const [data, setData] = useState<AppData>(INITIAL_DATA);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -89,18 +91,56 @@ export function AppShell() {
     }
   }, [data, isInitialized]);
 
+  // AI Memory: Update patterns from journal analysis
+  const updateAIMemory = useCallback((entry: JournalEntry) => {
+    if (!entry.analysis) return;
+
+    setData(prev => {
+      const currentMemory: AIMemory = prev.aiMemory || { patterns: [], lastQuestion: '', updatedAt: '' };
+
+      // Extract coaching question for next session
+      const lastQuestion = entry.analysis?.coachingQuestion || currentMemory.lastQuestion;
+
+      // Keep patterns to max 10
+      const newPatterns = [...currentMemory.patterns];
+
+      // Add theme-based pattern if recurring
+      const themes = entry.analysis?.themes || [];
+      const existingThemes = prev.journal.slice(-10).flatMap(e => e.analysis?.themes || []);
+      themes.forEach(theme => {
+        const count = existingThemes.filter(t => t === theme).length;
+        if (count >= 3) {
+          const pattern = `「${theme}」が繰り返し登場（直近10件で${count}回）`;
+          if (!newPatterns.includes(pattern)) {
+            newPatterns.push(pattern);
+          }
+        }
+      });
+
+      // Limit patterns
+      while (newPatterns.length > 10) newPatterns.shift();
+
+      return {
+        ...prev,
+        aiMemory: {
+          patterns: newPatterns,
+          lastQuestion,
+          updatedAt: new Date().toISOString(),
+        }
+      };
+    });
+  }, []);
+
   const handleLogin = async (email: string, password: string) => {
     setAuthError(undefined);
 
     if (!data.user) {
-      // New account: hash the password
       const hashedPassword = await hashPassword(password);
       setData(prev => ({
         ...prev,
         user: { name: email.split('@')[0], email, password: hashedPassword, mbti: '', strengths: [], skills: [], history: '' }
       }));
 
-      // Show onboarding for new users
       const onboardingDone = localStorage.getItem(ONBOARDING_KEY);
       if (!onboardingDone) {
         setShowOnboarding(true);
@@ -108,12 +148,10 @@ export function AppShell() {
 
       setView(ViewState.DASHBOARD);
     } else {
-      // Existing account: verify password
       const storedPassword = data.user.password || '';
       const isValid = await verifyPassword(password, storedPassword);
 
       if (isValid) {
-        // Migrate plain-text password to hashed if needed
         if (!storedPassword.includes(':') || storedPassword.length < 40) {
           const hashedPassword = await hashPassword(password);
           setData(prev => ({
@@ -143,7 +181,7 @@ export function AppShell() {
 
   const handleImportData = (newData: AppData) => {
       setData(newData);
-      alert('データをインポートしました。');
+      showToast('データをインポートしました。', 'success');
   };
 
   const handleExitPublic = () => {
@@ -153,6 +191,12 @@ export function AppShell() {
       if (window.location.hash.startsWith('#profile=')) {
           window.history.pushState("", document.title, window.location.pathname + window.location.search);
       }
+  };
+
+  const handleAddJournalEntry = (entry: JournalEntry) => {
+    setData(p => ({...p, journal: [...p.journal, entry]}));
+    // Update AI memory with new entry
+    updateAIMemory(entry);
   };
 
   const handleUpdateJournalEntry = (updatedEntry: JournalEntry) => {
@@ -175,7 +219,6 @@ export function AppShell() {
 
   if (!isInitialized) return null;
 
-  // Onboarding overlay
   if (showOnboarding) {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
@@ -195,6 +238,9 @@ export function AppShell() {
     return <Auth onLogin={handleLogin} hasExistingAccount={!!data.user} error={authError} />;
   }
 
+  // Recent journal entries for goals coaching
+  const recentJournal = data.journal.slice(-5);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-hidden flex flex-col">
@@ -211,14 +257,33 @@ export function AppShell() {
           {view === ViewState.JOURNAL && (
             <Journal
               entries={data.journal}
-              onAddEntry={(e) => setData(p => ({...p, journal: [...p.journal, e]}))}
+              onAddEntry={handleAddJournalEntry}
               onUpdateEntry={handleUpdateJournalEntry}
               onDeleteEntry={handleDeleteJournalEntry}
               profile={data.user}
+              goals={data.goals}
+              aiMemory={data.aiMemory}
             />
           )}
-          {view === ViewState.MONEY && <Money assets={data.assets} onUpdateAssets={(a) => setData(p => ({...p, assets: a}))} moneyConfig={data.moneyConfig} onUpdateConfig={(c) => setData(p => ({...p, moneyConfig: c}))} budgetProfile={data.budgetProfile} onUpdateBudget={(b) => setData(p => ({...p, budgetProfile: b}))} />}
-          {view === ViewState.GOALS && <Goals goals={data.goals} onUpdateGoals={(g) => setData(p => ({...p, goals: g}))} />}
+          {view === ViewState.MONEY && (
+            <Money
+              assets={data.assets}
+              onUpdateAssets={(a) => setData(p => ({...p, assets: a}))}
+              moneyConfig={data.moneyConfig}
+              onUpdateConfig={(c) => setData(p => ({...p, moneyConfig: c}))}
+              budgetProfile={data.budgetProfile}
+              onUpdateBudget={(b) => setData(p => ({...p, budgetProfile: b}))}
+              profile={data.user}
+            />
+          )}
+          {view === ViewState.GOALS && (
+            <Goals
+              goals={data.goals}
+              onUpdateGoals={(g) => setData(p => ({...p, goals: g}))}
+              profile={data.user}
+              recentJournal={recentJournal}
+            />
+          )}
           {view === ViewState.PROFILE && (
             <Profile
               profile={data.user}
@@ -235,5 +300,14 @@ export function AppShell() {
         <BackupReminder data={data} />
       </div>
     </div>
+  );
+}
+
+// Wrap with ToastProvider
+export function AppShell() {
+  return (
+    <ToastProvider>
+      <AppShellInner />
+    </ToastProvider>
   );
 }

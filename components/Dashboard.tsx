@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { AppData } from '@/types';
-import { Sparkles, Book, Target, TrendingUp, ChevronLeft, ChevronRight, Sun, Moon, CloudSun } from 'lucide-react';
+import { AppData, JournalEntry } from '@/types';
+import { Sparkles, Book, Target, TrendingUp, ChevronLeft, ChevronRight, Sun, Moon, CloudSun, Flame, BookmarkCheck, X, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 interface DashboardProps {
   data: AppData;
@@ -17,11 +17,16 @@ const EMOTION_COLORS: Record<string, string> = {
   anger: '#f87171',
 };
 
+const EMOTION_LABELS: Record<string, string> = {
+  joy: '喜び', calm: '穏やか', anxiety: '不安', sadness: '悲しみ', anger: '怒り',
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   });
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const hour = new Date().getHours();
   const greeting = hour < 10 ? 'おはようございます' : hour < 18 ? 'こんにちは' : 'おつかれさまです';
@@ -35,6 +40,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
   // Recent AI comment
   const latestCommented = [...data.journal].reverse().find(e => e.aiComment);
 
+  // Bookmarked entries
+  const bookmarkedEntries = data.journal.filter(e => e.bookmarked && e.aiComment);
+
   // Active goals count
   const activeGoals = data.goals.filter(g => g.progress < 100);
   const completedGoals = data.goals.filter(g => g.progress >= 100);
@@ -44,27 +52,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
     let count = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     for (let i = 0; i < 365; i++) {
       const checkDate = new Date(today);
       checkDate.setDate(today.getDate() - i);
       const dateStr = checkDate.toISOString().split('T')[0];
       const hasEntry = data.journal.some(e => e.date.startsWith(dateStr));
-      if (hasEntry) {
-        count++;
-      } else if (i > 0) {
-        break;
-      }
+      if (hasEntry) { count++; } else if (i > 0) { break; }
     }
     return count;
   }, [data.journal]);
+
+  // Growth metrics: week-over-week emotion comparison
+  const growthMetrics = useMemo(() => {
+    const now = new Date();
+    const oneWeekAgo = new Date(now); oneWeekAgo.setDate(now.getDate() - 7);
+    const twoWeeksAgo = new Date(now); twoWeeksAgo.setDate(now.getDate() - 14);
+
+    const thisWeek = data.journal.filter(e => {
+      const d = new Date(e.date);
+      return d >= oneWeekAgo && d <= now && e.analysis?.emotions;
+    });
+    const lastWeek = data.journal.filter(e => {
+      const d = new Date(e.date);
+      return d >= twoWeeksAgo && d < oneWeekAgo && e.analysis?.emotions;
+    });
+
+    const avg = (entries: typeof thisWeek, key: string) => {
+      if (entries.length === 0) return 0;
+      const sum = entries.reduce((acc, e) => acc + ((e.analysis?.emotions as unknown as Record<string, number>)?.[key] || 0), 0);
+      return sum / entries.length;
+    };
+
+    return {
+      joyChange: avg(thisWeek, 'joy') - avg(lastWeek, 'joy'),
+      calmChange: avg(thisWeek, 'calm') - avg(lastWeek, 'calm'),
+      anxietyChange: avg(thisWeek, 'anxiety') - avg(lastWeek, 'anxiety'),
+      thisWeekCount: thisWeek.length,
+      lastWeekCount: lastWeek.length,
+    };
+  }, [data.journal]);
+
+  // Nudge message
+  const nudgeMessage = useMemo(() => {
+    if (!todayEntry) {
+      if (streak >= 7) return `${streak}日連続記録中！今日も書いて記録を伸ばしましょう。`;
+      if (streak >= 3) return '良いペースです！今日の気持ちも記録しましょう。';
+      return '今日の気持ちを書いてみませんか？';
+    }
+    const pendingGoals = data.goals.filter(g => g.progress > 0 && g.progress < 100);
+    if (pendingGoals.length > 0) return `「${pendingGoals[0].title}」の進捗、最近どうですか？`;
+    if (completedGoals.length > 0) return `${completedGoals.length}個の目標を達成済み！素晴らしいですね。`;
+    return '記録を続けることで、自分の成長パターンが見えてきます。';
+  }, [todayEntry, streak, data.goals, completedGoals.length]);
 
   // Emotion calendar data
   const calendarData = useMemo(() => {
     const { year, month } = calendarMonth;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfWeek = new Date(year, month, 1).getDay();
-    const entries: Record<number, { dominant: string; score: number }> = {};
+    const entries: Record<number, { dominant: string; score: number; entry: JournalEntry }> = {};
 
     data.journal.forEach(e => {
       const d = new Date(e.date);
@@ -73,7 +119,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
         const dominant = Object.entries(emotions).reduce((a, b) => a[1] > b[1] ? a : b);
         const day = d.getDate();
         if (!entries[day] || dominant[1] > entries[day].score) {
-          entries[day] = { dominant: dominant[0], score: dominant[1] };
+          entries[day] = { dominant: dominant[0], score: dominant[1], entry: e };
         }
       }
     });
@@ -88,6 +134,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
       const m = prev.month - 1;
       return m < 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: m };
     });
+    setSelectedDay(null);
   };
 
   const nextMonth = () => {
@@ -95,6 +142,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
       const m = prev.month + 1;
       return m > 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: m };
     });
+    setSelectedDay(null);
+  };
+
+  const selectedEntry = selectedDay ? calendarData.entries[selectedDay]?.entry : null;
+
+  const ChangeIcon = ({ val }: { val: number }) => {
+    if (val > 0.05) return <ArrowUp size={12} className="text-green-500" />;
+    if (val < -0.05) return <ArrowDown size={12} className="text-red-400" />;
+    return <Minus size={12} className="text-gray-400" />;
   };
 
   return (
@@ -108,6 +164,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
           <h2 className="text-xl font-bold text-navy-900">{greeting}、{userName}さん</h2>
           <p className="text-xs text-gray-400">{new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
         </div>
+      </div>
+
+      {/* Nudge */}
+      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 flex items-center space-x-3">
+        <Flame size={16} className="text-yellow-500 shrink-0" />
+        <p className="text-xs text-yellow-700 leading-relaxed">{nudgeMessage}</p>
       </div>
 
       {/* Stats Row */}
@@ -125,6 +187,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
           <div className="text-[10px] text-gray-400 mt-0.5">目標達成</div>
         </button>
       </div>
+
+      {/* Growth Metrics */}
+      {growthMetrics.thisWeekCount > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-2 mb-3">
+            <TrendingUp size={16} className="text-navy-600" />
+            <h3 className="text-sm font-bold text-navy-900">今週の変化</h3>
+            <span className="text-[10px] text-gray-400">vs 先週</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <div className="flex items-center justify-center space-x-1">
+                <span className="text-xs font-bold text-yellow-500">喜び</span>
+                <ChangeIcon val={growthMetrics.joyChange} />
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.joyChange > 0 ? '+' : '')}{(growthMetrics.joyChange * 10).toFixed(1)}</div>
+            </div>
+            <div className="text-center">
+              <div className="flex items-center justify-center space-x-1">
+                <span className="text-xs font-bold text-blue-400">穏やか</span>
+                <ChangeIcon val={growthMetrics.calmChange} />
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.calmChange > 0 ? '+' : '')}{(growthMetrics.calmChange * 10).toFixed(1)}</div>
+            </div>
+            <div className="text-center">
+              <div className="flex items-center justify-center space-x-1">
+                <span className="text-xs font-bold text-purple-400">不安</span>
+                <ChangeIcon val={-growthMetrics.anxietyChange} />
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.anxietyChange > 0 ? '+' : '')}{(growthMetrics.anxietyChange * 10).toFixed(1)}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Today's Status */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
@@ -195,54 +291,99 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
           {['日', '月', '火', '水', '木', '金', '土'].map(d => (
             <div key={d} className="text-[10px] text-center text-gray-400 font-medium py-1">{d}</div>
           ))}
-          {/* Empty cells for first week offset */}
           {Array.from({ length: calendarData.firstDayOfWeek }).map((_, i) => (
             <div key={`empty-${i}`} />
           ))}
-          {/* Day cells */}
           {Array.from({ length: calendarData.daysInMonth }).map((_, i) => {
             const day = i + 1;
             const entry = calendarData.entries[day];
             const isToday = day === new Date().getDate() &&
               calendarMonth.year === new Date().getFullYear() &&
               calendarMonth.month === new Date().getMonth();
+            const isSelected = selectedDay === day;
 
             return (
-              <div
+              <button
                 key={day}
-                className={`aspect-square flex items-center justify-center rounded-lg text-xs relative ${
+                onClick={() => entry ? setSelectedDay(isSelected ? null : day) : undefined}
+                className={`aspect-square flex items-center justify-center rounded-lg text-xs relative transition-all ${
                   isToday ? 'ring-2 ring-navy-400 font-bold' : ''
-                }`}
-                style={entry ? {
-                  backgroundColor: EMOTION_COLORS[entry.dominant] + '30',
-                } : {}}
+                } ${isSelected ? 'ring-2 ring-navy-600 scale-110' : ''} ${entry ? 'cursor-pointer hover:scale-105' : ''}`}
+                style={entry ? { backgroundColor: EMOTION_COLORS[entry.dominant] + '30' } : {}}
               >
                 {entry && (
-                  <div
-                    className="absolute inset-1 rounded-md opacity-40"
-                    style={{ backgroundColor: EMOTION_COLORS[entry.dominant] }}
-                  />
+                  <div className="absolute inset-1 rounded-md opacity-40" style={{ backgroundColor: EMOTION_COLORS[entry.dominant] }} />
                 )}
-                <span className={`relative z-10 ${entry ? 'font-medium text-gray-700' : 'text-gray-300'}`}>
-                  {day}
-                </span>
-              </div>
+                <span className={`relative z-10 ${entry ? 'font-medium text-gray-700' : 'text-gray-300'}`}>{day}</span>
+              </button>
             );
           })}
         </div>
+
+        {/* Selected day detail popup */}
+        {selectedEntry && selectedDay && (
+          <div className="mt-3 p-3 bg-navy-50 rounded-xl border border-navy-100 animate-in slide-in-from-top-1 fade-in">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-navy-700">{calendarMonth.month + 1}/{selectedDay}の記録</span>
+              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 line-clamp-2 mb-2">{selectedEntry.content}</p>
+            {selectedEntry.analysis?.emotions && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {Object.entries(selectedEntry.analysis.emotions)
+                  .filter(([, v]) => (v as number) > 0.2)
+                  .sort(([, a], [, b]) => (b as number) - (a as number))
+                  .map(([key, val]) => (
+                    <span key={key} className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: EMOTION_COLORS[key] + '30', color: EMOTION_COLORS[key] === '#facc15' ? '#92400e' : undefined }}>
+                      {EMOTION_LABELS[key]} {((val as number) * 10).toFixed(0)}
+                    </span>
+                  ))
+                }
+              </div>
+            )}
+            {selectedEntry.analysis?.themes && (
+              <div className="flex flex-wrap gap-1">
+                {selectedEntry.analysis.themes.map((t, i) => (
+                  <span key={i} className="text-[10px] bg-white text-navy-600 px-2 py-0.5 rounded-full border border-navy-100">{t}</span>
+                ))}
+              </div>
+            )}
+            {selectedEntry.aiComment && (
+              <p className="text-[10px] text-navy-600 italic mt-2 line-clamp-2">{selectedEntry.aiComment}</p>
+            )}
+          </div>
+        )}
 
         {/* Legend */}
         <div className="flex justify-center space-x-3 mt-3 pt-3 border-t border-gray-50">
           {Object.entries(EMOTION_COLORS).map(([key, color]) => (
             <div key={key} className="flex items-center space-x-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-              <span className="text-[9px] text-gray-400">
-                {key === 'joy' ? '喜' : key === 'calm' ? '穏' : key === 'anxiety' ? '不安' : key === 'sadness' ? '悲' : '怒'}
-              </span>
+              <span className="text-[9px] text-gray-400">{EMOTION_LABELS[key]}</span>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Bookmarked AI Comments */}
+      {bookmarkedEntries.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-2 mb-3">
+            <BookmarkCheck size={16} className="text-yellow-500" />
+            <h3 className="text-sm font-bold text-navy-900">保存したAIコメント</h3>
+          </div>
+          <div className="space-y-2">
+            {bookmarkedEntries.slice(-3).reverse().map(entry => (
+              <div key={entry.id} className="p-3 bg-navy-50 rounded-lg border border-navy-100">
+                <p className="text-xs text-navy-700 italic line-clamp-2">{entry.aiComment}</p>
+                <span className="text-[10px] text-gray-400 mt-1 block">{new Date(entry.date).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Active Goals */}
       {activeGoals.length > 0 && (

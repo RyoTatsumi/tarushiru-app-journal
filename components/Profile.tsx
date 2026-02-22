@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useToast } from '@/components/Toast';
 import { UserProfile, GeneticAnalysis, AppData } from '@/types';
 import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '@/lib/aiService';
 import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database } from 'lucide-react';
@@ -27,6 +28,7 @@ const STRENGTHS_THEMES = [
 ].sort();
 
 export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onResetData, onPreviewPublic, onImportData }) => {
+  const { showToast, showConfirm } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState<UserProfile>({
       name: '', email: '', mbti: '', strengths: [], skills: [], history: '',
@@ -93,14 +95,16 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
               const parsed = JSON.parse(content);
               // Simple validation
               if (parsed.journal && parsed.goals) {
-                  if (window.confirm('データを読み込みますか？現在のデータは上書きされます。')) {
-                      onImportData(parsed);
-                  }
+                  showConfirm({
+                      message: 'データを読み込みますか？現在のデータは上書きされます。',
+                      confirmLabel: '読み込む',
+                      onConfirm: () => onImportData(parsed)
+                  });
               } else {
-                  alert('有効なバックアップファイルではありません。');
+                  showToast('有効なバックアップファイルではありません。', 'error');
               }
           } catch (err) {
-              alert('ファイルの読み込みに失敗しました。');
+              showToast('ファイルの読み込みに失敗しました。', 'error');
           }
       };
       reader.readAsText(file);
@@ -114,7 +118,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           const res = await generateResume(formData);
           setFormData(prev => ({ ...prev, resumeMarkdown: res }));
       } catch (e) {
-          alert('生成に失敗しました。');
+          showToast('生成に失敗しました。', 'error');
       } finally {
           setIsGeneratingResume(false);
       }
@@ -127,7 +131,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           const analysis = await analyzeGeneticType(formData.geneticTypeRaw);
           setFormData(prev => ({ ...prev, geneticAnalysis: analysis }));
       } catch (e) {
-          alert('解析に失敗しました。');
+          showToast('解析に失敗しました。', 'error');
       } finally {
           setIsAnalyzingGenetics(false);
       }
@@ -176,7 +180,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                           <p className="text-xs font-bold text-navy-900">2. URLを発行して送る</p>
                           <div className="flex space-x-2">
                               <input readOnly value={generateProfileLink()} className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-[10px] truncate"/>
-                              <button onClick={() => {navigator.clipboard.writeText(generateProfileLink()); alert('URLをコピーしました');}} className="bg-navy-900 text-white px-4 py-2 rounded-lg"><Copy size={16}/></button>
+                              <button onClick={() => {navigator.clipboard.writeText(generateProfileLink()); showToast('URLをコピーしました', 'success');}} className="bg-navy-900 text-white px-4 py-2 rounded-lg"><Copy size={16}/></button>
                           </div>
                       </div>
                       <div className="space-y-3 border-t pt-5">
@@ -189,7 +193,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                                 const partner = JSON.parse(decodeURIComponent(escape(atob(hash))));
                                 const res = await analyzeCompatibility(formData, partner);
                                 setCompatibilityResult(res);
-                              } catch (e) { alert('URLが無効です'); } finally { setIsAnalyzingCompatibility(false); }
+                              } catch (e) { showToast('URLが無効です', 'error'); } finally { setIsAnalyzingCompatibility(false); }
                           }} className="w-full bg-navy-900 text-white py-3 rounded-xl font-bold flex items-center justify-center space-x-2 shadow-lg disabled:opacity-50">
                               {isAnalyzingCompatibility ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18} className="text-yellow-400"/>}
                               <span>AI 相性診断</span>

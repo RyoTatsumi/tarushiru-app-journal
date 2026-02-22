@@ -4,9 +4,18 @@ import { callWithRetry } from '@/lib/retry';
 
 export async function POST(request: NextRequest) {
   try {
-    const { assets, budget } = await request.json();
+    const { assets, budget, profile } = await request.json();
 
-    const prompt = `以下の資産データと家計データに基づいて、FP（ファイナンシャルプランナー）の視点から分析レポートを作成してください。
+    const profileContext = profile ? `
+      ユーザー: ${profile.name || 'ユーザー'}
+      価値観: ${profile.values || '不明'}
+      興味関心: ${profile.interests || '不明'}
+    ` : '';
+
+    const prompt = `あなたは、ユーザーの人生の価値観を理解したパーソナルFP（ファイナンシャルプランナー）です。
+数字だけでなく、ユーザーの人生の優先順位を踏まえた実践的なアドバイスをしてください。
+
+${profileContext}
 
 資産データ:
 ${JSON.stringify(assets, null, 2)}
@@ -15,12 +24,15 @@ ${JSON.stringify(assets, null, 2)}
 ${JSON.stringify(budget, null, 2)}
 
 以下の項目を含めてください：
-1. 資産構成の評価
-2. 収支バランスの分析
-3. 改善点やリスク
-4. 今後のアクションプラン
+1. **資産構成の評価**: 現在のポートフォリオバランス
+2. **収支バランス**: 固定費率、貯蓄率の分析
+3. **リスクと改善点**: ユーザーの価値観に沿った改善提案
+4. **アクションプラン**: 今月できる具体的な1〜2ステップ
 
-温かく実践的なトーンで書いてください。`;
+## トーン
+- 温かく実践的、批判しない
+- ユーザーの価値観や興味を尊重
+- 500〜800文字程度`;
 
     const response = await callWithRetry(async () => {
       return await getAnthropicClient().messages.create({

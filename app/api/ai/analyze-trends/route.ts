@@ -6,27 +6,40 @@ export async function POST(request: NextRequest) {
   try {
     const { entries, profile, timeframeLabel } = await request.json();
 
-    const recentEntries = entries.map((e: { date: string; content: string; analysis?: { themes?: string[] } }) => ({
+    const recentEntries = entries.map((e: { date: string; content: string; analysis?: { themes?: string[]; emotions?: Record<string, number> } }) => ({
       date: e.date,
-      content: e.content,
-      themes: e.analysis?.themes || []
+      content: e.content.slice(0, 300),
+      themes: e.analysis?.themes || [],
+      emotions: e.analysis?.emotions || null
     }));
 
-    const prompt = `過去${timeframeLabel}の日記データに基づいて、ユーザーの感情・行動・思考の傾向分析レポートを作成してください。
+    const profileContext = profile ? `
+      ユーザー名: ${profile.name || 'ユーザー'}
+      MBTI: ${profile.mbti || '不明'}
+      価値観: ${profile.values || '不明'}
+      強み: ${profile.strengths?.join(', ') || '不明'}
+    ` : 'ユーザー: 不明';
 
-ユーザー名: ${profile?.name || 'ユーザー'}
-MBTI: ${profile?.mbti || '不明'}
+    const prompt = `あなたは、ユーザーの人生を深く理解したパーソナルアナリストです。
+過去${timeframeLabel}の日記データに基づいて、感情・行動・思考の傾向分析レポートを作成してください。
 
-日記データ:
+${profileContext}
+
+日記データ（感情スコア付き）:
 ${JSON.stringify(recentEntries, null, 2)}
 
 以下の項目を含めてください：
-1. 感情の全体的な傾向（ポジティブ/ネガティブの比率、変化のパターン）
-2. 繰り返し出現するテーマや話題
-3. 成長や変化が見られるポイント
-4. 今後に向けたアドバイス
+1. **感情の全体像**: 感情スコアの推移パターン、ポジティブ/ネガティブの比率、特に変化が大きかった時期とその考察
+2. **テーマの傾向**: 繰り返し出現するテーマ、新しく出てきたテーマ、消えたテーマ
+3. **成長のサイン**: 内面の変化、新しい気づき、乗り越えた課題
+4. **パターンの発見**: 曜日や時期による感情パターン、特定のテーマと感情の相関
+5. **今後へのメッセージ**: ユーザーの特性を踏まえた、温かく具体的なアドバイス
 
-温かく、励ましのトーンで書いてください。`;
+## トーン
+- 温かく励ましつつも、鋭い洞察を含める
+- ユーザーの特性（MBTI/強み）を自然に織り交ぜる
+- 専門用語は避け、自然な日本語で
+- 800〜1200文字程度`;
 
     const response = await callWithRetry(async () => {
       return await getAnthropicClient().messages.create({

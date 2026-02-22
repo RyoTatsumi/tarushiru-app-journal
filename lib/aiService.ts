@@ -1,4 +1,4 @@
-import { UserProfile, JournalEntry } from '@/types';
+import { UserProfile, JournalEntry, Goal, AIMemory } from '@/types';
 
 async function callApi(endpoint: string, body: unknown) {
   const response = await fetch(`/api/ai/${endpoint}`, {
@@ -17,9 +17,11 @@ async function callApi(endpoint: string, body: unknown) {
 export const analyzeJournalEntry = async (
   text: string,
   profile: UserProfile | null,
-  pastEntries: JournalEntry[] = []
+  pastEntries: JournalEntry[] = [],
+  goals: Goal[] = [],
+  aiMemory?: AIMemory
 ) => {
-  return callApi('analyze-journal', { text, profile, pastEntries });
+  return callApi('analyze-journal', { text, profile, pastEntries, goals, aiMemory });
 };
 
 export const analyzeCompatibility = async (
@@ -58,12 +60,12 @@ export const analyzeGeneticType = async (rawText: string) => {
   return callApi('analyze-genetic', { rawText });
 };
 
-export const analyzeAssetTrends = async (assets: unknown[], budget: unknown) => {
-  const data = await callApi('analyze-assets', { assets, budget });
+export const analyzeAssetTrends = async (assets: unknown[], budget: unknown, profile?: UserProfile | null) => {
+  const data = await callApi('analyze-assets', { assets, budget, profile });
   return data.result;
 };
 
-export const getGoalCoaching = async (goals: unknown[]) => {
-  const data = await callApi('goal-coaching', { goals });
+export const getGoalCoaching = async (goals: Goal[], profile?: UserProfile | null, recentJournal?: JournalEntry[]) => {
+  const data = await callApi('goal-coaching', { goals, profile, recentJournal });
   return data.result;
 };

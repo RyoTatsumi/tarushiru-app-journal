@@ -17,16 +17,28 @@ export interface EmotionScore {
   calm: number;
 }
 
+export interface SubEmotionScore {
+  fulfillment?: number;
+  loneliness?: number;
+  gratitude?: number;
+  frustration?: number;
+  hope?: number;
+  confusion?: number;
+}
+
 export interface JournalEntry {
   id: string;
   date: string;
   content: string;
   analysis?: {
     emotions: EmotionScore;
+    subEmotions?: SubEmotionScore;
     themes: string[];
     actions: string[];
+    coachingQuestion?: string;
   };
   aiComment?: string;
+  bookmarked?: boolean;
 }
 
 export interface AssetRecord {
@@ -78,7 +90,7 @@ export interface UserProfile {
   history: string;
   resumeMarkdown?: string;
   personalityAnalysis?: string;
-  
+
   careerStrengths?: string;
   interests?: string;
   values?: string;
@@ -89,6 +101,12 @@ export interface UserProfile {
   geneticAnalysis?: GeneticAnalysis;
 }
 
+export interface AIMemory {
+  patterns: string[];
+  lastQuestion: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   user: UserProfile | null;
   journal: JournalEntry[];
@@ -96,4 +114,5 @@ export interface AppData {
   assets: AssetRecord[];
   moneyConfig: MoneyConfig;
   budgetProfile: BudgetProfile;
+  aiMemory?: AIMemory;
 }

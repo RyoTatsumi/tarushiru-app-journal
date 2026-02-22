@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem } from '@/types';
+import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem, UserProfile } from '@/types';
 import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
 import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase } from 'lucide-react';
 import { analyzeAssetTrends } from '@/lib/aiService';
+import { useToast } from '@/components/Toast';
 
 interface MoneyProps {
   assets: AssetRecord[];
@@ -13,6 +14,7 @@ interface MoneyProps {
   onUpdateConfig: (config: MoneyConfig) => void;
   budgetProfile: BudgetProfile;
   onUpdateBudget: (budget: BudgetProfile) => void;
+  profile?: UserProfile | null;
 }
 
 type TabMode = 'stock' | 'flow';
@@ -23,8 +25,10 @@ export const Money: React.FC<MoneyProps> = ({
     moneyConfig, 
     onUpdateConfig,
     budgetProfile,
-    onUpdateBudget
+    onUpdateBudget,
+    profile
 }) => {
+  const { showToast, showConfirm } = useToast();
   const [activeTab, setActiveTab] = useState<TabMode>('stock');
   const currentMonthStr = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
@@ -73,12 +77,16 @@ export const Money: React.FC<MoneyProps> = ({
   };
 
   const handleDeleteCategory = (cat: string) => {
-      if (window.confirm(`${cat} を削除してもよろしいですか？`)) {
-        onUpdateConfig({
-            ...moneyConfig,
-            assetCategories: moneyConfig.assetCategories.filter(c => c !== cat)
-        });
-      }
+      showConfirm({
+          message: `${cat} を削除してもよろしいですか？`,
+          confirmLabel: '削除する',
+          onConfirm: () => {
+              onUpdateConfig({
+                  ...moneyConfig,
+                  assetCategories: moneyConfig.assetCategories.filter(c => c !== cat)
+              });
+          }
+      });
   };
 
   // --- Logic: Budget/Flow Management ---
@@ -119,10 +127,10 @@ export const Money: React.FC<MoneyProps> = ({
   const handleAnalyze = async () => {
       setIsAnalyzing(true);
       try {
-          const result = await analyzeAssetTrends(assets, budgetProfile);
+          const result = await analyzeAssetTrends(assets, budgetProfile, profile);
           setAnalysisResult(result);
       } catch (e) {
-          alert("分析に失敗しました");
+          showToast('分析に失敗しました', 'error');
       } finally {
           setIsAnalyzing(false);
       }
