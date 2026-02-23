@@ -48,7 +48,7 @@ const journalAnalysisTool = {
       },
       aiComment: {
         type: 'string' as const,
-        description: '150〜200文字のパーソナライズされた温かいフィードバック。問いかけを1つ含む。',
+        description: '150〜250文字の温かいフィードバック。ユーザーの特性データは直接言及せず、その理解を「にじませる」こと。過去の流れとの変化や気づきに触れ、内省や自己肯定感を促す。',
       },
       coachingQuestion: {
         type: 'string' as const,
@@ -65,14 +65,15 @@ export async function POST(request: NextRequest) {
 
     // プロフィールコンテキスト
     const profileContext = profile ? `
-      [ユーザーの「本質」データ]
+      [ユーザーの深層理解 - ※この情報はコメントに直接表面化させないこと。理解として内部に持ち、自然ににじませる]
       - 名前: ${profile.name || 'ユーザー'}
-      - 思考特性(MBTI): ${profile.mbti || '不明'} (このタイプ特有の思考癖や葛藤を考慮すること)
-      - 才能の源泉(Strengths): ${profile.strengths?.join(', ') || '不明'} (この強みがどう状況に影響したか)
-      - 生物学的特性(遺伝子/体質): ${profile.geneticAnalysis?.determinedType || '不明'} (エネルギーレベルやストレス耐性を考慮)
-      - 人生の核となる価値観: ${profile.values || '不明'} (今回の感情は、この価値観との合致・乖離が原因ではないか)
-      - キャリアの強み: ${profile.careerStrengths || '不明'}
+      - 思考の傾向(MBTI): ${profile.mbti || '不明'}
+      - 才能の源泉(Strengths): ${profile.strengths?.join(', ') || '不明'}
+      - 体質傾向: ${profile.geneticAnalysis?.determinedType || '不明'}
+      - 大切にしている価値観: ${profile.values || '不明'}
+      - キャリア上の強み: ${profile.careerStrengths || '不明'}
       - 興味関心: ${profile.interests || '不明'}
+      ※ 上記の情報は「この人はこういう人だ」という深い理解として使い、「あなたはMBTI◯◯だから」「Strengths◯◯が」のように直接的に言及しないこと。
     ` : 'ユーザー特性: 未設定';
 
     // 過去エントリーコンテキスト（感情スコア + テーマも含む）（#1改善）
@@ -93,14 +94,18 @@ export async function POST(request: NextRequest) {
       `
       : '過去の文脈: 特になし（今回が初めて、または久しぶりの記録）';
 
-    // 目標コンテキスト（#1改善 - Goals連携）
+    // 目標コンテキスト（Being vs Achievement区別）
     const goalsContext = goals && goals.length > 0
       ? `
-      [現在の目標]
-      ${goals.filter((g: { progress: number }) => g.progress < 100).map((g: { title: string; category: string; progress: number; description?: string }) =>
-        `- [${g.category}] ${g.title} (進捗: ${g.progress}%)${g.description ? ` - ${g.description}` : ''}`
-      ).join('\n')}
-      ※ 今回の日記内容が目標に関連していれば、自然に言及してください。
+      [ユーザーの目標 - ※直接的に「目標に書いてあった〜」とは言わないこと]
+      在り方(Being - 一生続く、体現するもの):
+      ${goals.filter((g: { category: string }) => g.category === 'being').map((g: { title: string; progress: number; description?: string }) =>
+        `- ${g.title} (体現度: ${g.progress}%)${g.description ? ` - ${g.description}` : ''}`
+      ).join('\n') || 'なし'}
+      達成型(Life/Work/短期):
+      ${goals.filter((g: { category: string; progress: number }) => g.category !== 'being' && g.progress < 100).map((g: { title: string; category: string; progress: number }) =>
+        `- [${g.category}] ${g.title} (${g.progress}%)`
+      ).join('\n') || 'なし'}
       `
       : '';
 
@@ -128,12 +133,20 @@ export async function POST(request: NextRequest) {
       [今回の記録]
       "${text}"
 
-      ## 生成の指針
-      1. **「点」ではなく「線」で捉える**: 今回の出来事を単体で評価せず、過去の流れやユーザーの人生という大きな文脈の中に位置づけてコメントしてください。
-      2. **特性への深い理解と受容**: 専門用語は使わず、「深く思考を巡らせるあなただからこそ…」といった自然な表現で特性に触れてください。
-      3. **魂への問いかけ**: 共感で終わらせず、一歩踏み込んだ「気づき」や「問い」を1つ投げかけてください。
-      4. **目標との接続**: 日記の内容が目標に関連していれば、自然に触れてください。
-      5. **トーン**: 温かく、知性的で、決して批判せず、絶対的な味方であること。提案型で。
+      ## aiComment 生成の厳守ルール
+      1. **プロフィール情報を絶対に表面に出さない**: MBTI名、Strengths名、遺伝子タイプ名、価値観のキーワードをそのまま書かない。「あなたは◯◯タイプだから」「◯◯という強みが」は禁止。代わりに、その理解を自然ににじませる。
+         - ❌「内省の強みを持つあなたは…」
+         - ⭕「こうやって立ち止まって考えられること、実はすごいことですよね」
+         - ❌「INTJらしく戦略的に…」
+         - ⭕「先のことまで見据えて動いている感じが伝わります」
+      2. **「点」ではなく「線」**: 今回を単体で評価せず、過去エントリーとの変化・成長・繰り返しに触れる。「前にこういうことがあったけど、今回は〜」のような接続。初回の場合は「記録を始めたこと自体」を肯定。
+      3. **自己肯定感・自己効力感を育てる**: 「あなたはちゃんとやれている」「気づいている時点で前に進んでいる」など、小さな変化を見逃さず言語化する。
+      4. **継続のモチベーション**: 「書き続けることで見えてくるもの」「この記録が未来の自分への手紙になる」など、記録の価値を伝える。
+      5. **問いかけは押し付けない**: coachingQuestionとは別に、aiComment内では「〜かもしれませんね」「〜なのかな」程度の柔らかい投げかけに留める。
+      6. **トーン**: 長年の友人のような温かさ。知性的だが偉そうでない。批判ゼロ。提案型。150〜250文字。
+
+      ## 目標との接続
+      日記の内容が目標に関連していれば自然に触れる。ただし「目標に書いてあった〜」とは言わず、「最近意識していることと繋がっている感じがします」のように間接的に。
 
       ## テーマの選択
       以下のリストから2〜4つ選んでください: ${THEME_TAXONOMY.join(', ')}

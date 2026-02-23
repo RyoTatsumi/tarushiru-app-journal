@@ -14,7 +14,7 @@ interface GoalsProps {
 }
 
 const CATEGORIES: { id: GoalCategory; label: string; icon: React.ElementType; description: string }[] = [
-  { id: 'being', label: '在り方 (Being)', icon: Heart, description: '自分はどうありたいか、人生の指針' },
+  { id: 'being', label: '在り方 (Being)', icon: Heart, description: '死ぬまで続く「在り方」。達成ではなく、今どれだけ体現できているか。' },
   { id: 'life', label: '生活 (Life)', icon: Sun, description: '健康、趣味、暮らしの目標' },
   { id: 'work', label: '仕事 (Work)', icon: Briefcase, description: '中長期的なキャリア目標' },
   { id: 'work_short', label: '短期・タスク', icon: Clock, description: '直近でやりたいこと・タスク（ジャンル不問）' },
@@ -218,11 +218,11 @@ export const Goals: React.FC<GoalsProps> = ({ goals, onUpdateGoals, profile, rec
                 <div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3 flex-1 cursor-pointer" onClick={() => setExpandedId(expandedId === goal.id ? null : goal.id)}>
-                      <button className={`transition-colors shrink-0 ${goal.progress === 100 ? 'text-navy-500' : 'text-gray-300'}`}>
-                        {goal.progress === 100 ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+                      <button className={`transition-colors shrink-0 ${goal.progress === 100 && goal.category !== 'being' ? 'text-navy-500' : goal.progress >= 70 && goal.category === 'being' ? 'text-green-400' : 'text-gray-300'}`}>
+                        {goal.progress === 100 && goal.category !== 'being' ? <CheckCircle2 size={20} /> : <Circle size={20} />}
                       </button>
                       <div className="flex-1 min-w-0">
-                        <span className={`text-sm select-none block ${goal.progress === 100 ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                        <span className={`text-sm select-none block ${goal.progress === 100 && goal.category !== 'being' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                           {goal.title}
                         </span>
                         {goal.deadline && (
@@ -254,16 +254,21 @@ export const Goals: React.FC<GoalsProps> = ({ goals, onUpdateGoals, profile, rec
                   )}
 
                   {/* Progress slider */}
-                  <div className="mt-2 ml-8 flex items-center space-x-3">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={goal.progress}
-                      onChange={(e) => updateProgress(goal.id, parseInt(e.target.value))}
-                      className="flex-1 h-1.5 accent-navy-600 cursor-pointer"
-                    />
-                    <span className="text-[10px] font-bold text-navy-600 min-w-[32px] text-right">{goal.progress}%</span>
+                  <div className="mt-2 ml-8">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={goal.progress}
+                        onChange={(e) => updateProgress(goal.id, parseInt(e.target.value))}
+                        className="flex-1 h-1.5 accent-navy-600 cursor-pointer"
+                      />
+                      <span className="text-[10px] font-bold text-navy-600 min-w-[32px] text-right">{goal.progress}%</span>
+                    </div>
+                    {(goal.category || 'being') === 'being' && (
+                      <p className="text-[10px] text-gray-400 mt-1 italic">今、どれだけ体現できていますか？</p>
+                    )}
                   </div>
                 </div>
               )}
