@@ -69,3 +69,13 @@ export const getGoalCoaching = async (goals: Goal[], profile?: UserProfile | nul
   const data = await callApi('goal-coaching', { goals, profile, recentJournal });
   return data.result;
 };
+
+export const generateMonthlyReport = async (
+  entries: JournalEntry[],
+  profile: UserProfile | null,
+  goals: Goal[],
+  month: string
+) => {
+  const data = await callApi('analyze-monthly', { entries, profile, goals, month });
+  return data.result;
+};

@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from 'react';
 import { AppData, JournalEntry } from '@/types';
-import { Sparkles, Book, Target, TrendingUp, ChevronLeft, ChevronRight, Sun, Moon, CloudSun, Flame, BookmarkCheck, X, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { Sparkles, Book, Target, TrendingUp, ChevronLeft, ChevronRight, Sun, Moon, CloudSun, Flame, BookmarkCheck, X, ArrowUp, ArrowDown, Minus, Loader2, FileText } from 'lucide-react';
+import { generateMonthlyReport } from '@/lib/aiService';
 
 interface DashboardProps {
   data: AppData;
@@ -15,10 +16,23 @@ const EMOTION_COLORS: Record<string, string> = {
   anxiety: '#c084fc',
   sadness: '#94a3b8',
   anger: '#f87171',
+  excitement: '#fb923c',
+  trust: '#34d399',
+  surprise: '#f472b6',
 };
 
 const EMOTION_LABELS: Record<string, string> = {
   joy: '喜び', calm: '穏やか', anxiety: '不安', sadness: '悲しみ', anger: '怒り',
+  excitement: 'ワクワク', trust: '安心', surprise: '驚き',
+};
+
+const SUB_EMOTION_LABELS: Record<string, string> = {
+  fulfillment: '充実', gratitude: '感謝', pride: '誇り', relief: '安堵', love: '愛情', contentment: '満足',
+  hope: '希望', curiosity: '好奇心', determination: '決意',
+  loneliness: '孤独', nostalgia: '懐かしさ', disappointment: '失望',
+  frustration: 'もどかしさ', irritation: '苛立ち', envy: '嫉妬',
+  overwhelm: '圧倒', confusion: '迷い', guilt: '罪悪感', vulnerability: '不安定',
+  boredom: '退屈', shame: '恥',
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
@@ -27,6 +41,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
     return { year: now.getFullYear(), month: now.getMonth() };
   });
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [monthlyReport, setMonthlyReport] = useState<string | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const hour = new Date().getHours();
   const greeting = hour < 10 ? 'おはようございます' : hour < 18 ? 'こんにちは' : 'おつかれさまです';
@@ -87,10 +103,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
       joyChange: avg(thisWeek, 'joy') - avg(lastWeek, 'joy'),
       calmChange: avg(thisWeek, 'calm') - avg(lastWeek, 'calm'),
       anxietyChange: avg(thisWeek, 'anxiety') - avg(lastWeek, 'anxiety'),
+      excitementChange: avg(thisWeek, 'excitement') - avg(lastWeek, 'excitement'),
+      trustChange: avg(thisWeek, 'trust') - avg(lastWeek, 'trust'),
       thisWeekCount: thisWeek.length,
       lastWeekCount: lastWeek.length,
     };
   }, [data.journal]);
+
+  // Top 3 most significant emotion changes
+  const topChanges = useMemo(() => {
+    const changes = [
+      { key: 'joy', label: '喜び', color: '#facc15', change: growthMetrics.joyChange },
+      { key: 'calm', label: '穏やか', color: '#93c5fd', change: growthMetrics.calmChange },
+      { key: 'anxiety', label: '不安', color: '#c084fc', change: growthMetrics.anxietyChange, invert: true },
+      { key: 'excitement', label: 'ワクワク', color: '#fb923c', change: growthMetrics.excitementChange },
+      { key: 'trust', label: '安心', color: '#34d399', change: growthMetrics.trustChange },
+    ];
+    return changes.sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 3);
+  }, [growthMetrics]);
 
   // Nudge message
   const nudgeMessage = useMemo(() => {
@@ -145,6 +175,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
     setSelectedDay(null);
   };
 
+  const handleGenerateMonthlyReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const { year, month } = calendarMonth;
+      const monthStr = `${year}年${month + 1}月`;
+      const monthEntries = data.journal.filter(e => {
+        const d = new Date(e.date);
+        return d.getFullYear() === year && d.getMonth() === month;
+      });
+      if (monthEntries.length === 0) {
+        return;
+      }
+      const report = await generateMonthlyReport(monthEntries, data.user, data.goals, monthStr);
+      setMonthlyReport(report);
+    } catch {
+      // silent fail
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   const selectedEntry = selectedDay ? calendarData.entries[selectedDay]?.entry : null;
 
   const ChangeIcon = ({ val }: { val: number }) => {
@@ -197,27 +248,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
             <span className="text-[10px] text-gray-400">vs 先週</span>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div className="text-center">
-              <div className="flex items-center justify-center space-x-1">
-                <span className="text-xs font-bold text-yellow-500">喜び</span>
-                <ChangeIcon val={growthMetrics.joyChange} />
+            {topChanges.map(item => (
+              <div key={item.key} className="text-center">
+                <div className="flex items-center justify-center space-x-1">
+                  <span className="text-xs font-bold" style={{ color: item.color }}>{item.label}</span>
+                  <ChangeIcon val={'invert' in item && item.invert ? -item.change : item.change} />
+                </div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{(item.change > 0 ? '+' : '')}{(item.change * 10).toFixed(1)}</div>
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.joyChange > 0 ? '+' : '')}{(growthMetrics.joyChange * 10).toFixed(1)}</div>
-            </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center space-x-1">
-                <span className="text-xs font-bold text-blue-400">穏やか</span>
-                <ChangeIcon val={growthMetrics.calmChange} />
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.calmChange > 0 ? '+' : '')}{(growthMetrics.calmChange * 10).toFixed(1)}</div>
-            </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center space-x-1">
-                <span className="text-xs font-bold text-purple-400">不安</span>
-                <ChangeIcon val={-growthMetrics.anxietyChange} />
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{(growthMetrics.anxietyChange > 0 ? '+' : '')}{(growthMetrics.anxietyChange * 10).toFixed(1)}</div>
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -336,8 +375,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
                   .filter(([, v]) => (v as number) > 0.2)
                   .sort(([, a], [, b]) => (b as number) - (a as number))
                   .map(([key, val]) => (
-                    <span key={key} className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: EMOTION_COLORS[key] + '30', color: EMOTION_COLORS[key] === '#facc15' ? '#92400e' : undefined }}>
-                      {EMOTION_LABELS[key]} {((val as number) * 10).toFixed(0)}
+                    <span key={key} className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: (EMOTION_COLORS[key] || '#94a3b8') + '30', color: EMOTION_COLORS[key] === '#facc15' ? '#92400e' : undefined }}>
+                      {EMOTION_LABELS[key] || key} {((val as number) * 10).toFixed(0)}
+                    </span>
+                  ))
+                }
+              </div>
+            )}
+            {selectedEntry.analysis?.subEmotions && Object.keys(selectedEntry.analysis.subEmotions).length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {Object.entries(selectedEntry.analysis.subEmotions)
+                  .filter(([, v]) => v && (v as number) > 0.3)
+                  .sort(([, a], [, b]) => ((b as number) || 0) - ((a as number) || 0))
+                  .slice(0, 4)
+                  .map(([key, val]) => (
+                    <span key={key} className="text-[9px] bg-navy-100/50 text-navy-600 px-1.5 py-0.5 rounded-full">
+                      {SUB_EMOTION_LABELS[key] || key} {(((val as number) || 0) * 10).toFixed(0)}
                     </span>
                   ))
                 }
@@ -365,6 +418,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Monthly Report */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <FileText size={16} className="text-navy-600" />
+            <h3 className="text-sm font-bold text-navy-900">月次レポート</h3>
+          </div>
+          <span className="text-[10px] text-gray-400">{monthLabel}</span>
+        </div>
+        {monthlyReport ? (
+          <div className="space-y-3">
+            <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none">
+              {monthlyReport}
+            </div>
+            <button
+              onClick={() => setMonthlyReport(null)}
+              className="text-[10px] text-gray-400 hover:text-gray-600"
+            >
+              閉じる
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleGenerateMonthlyReport}
+            disabled={isGeneratingReport}
+            className="w-full bg-gradient-to-r from-navy-900 to-navy-700 text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+          >
+            {isGeneratingReport ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} className="text-yellow-400" />}
+            <span>{monthLabel}のレポートを生成</span>
+          </button>
+        )}
       </div>
 
       {/* Bookmarked AI Comments */}

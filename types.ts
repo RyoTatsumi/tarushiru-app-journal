@@ -15,15 +15,39 @@ export interface EmotionScore {
   sadness: number;
   anxiety: number;
   calm: number;
+  excitement?: number;
+  trust?: number;
+  surprise?: number;
 }
 
 export interface SubEmotionScore {
+  // Joy family
   fulfillment?: number;
-  loneliness?: number;
   gratitude?: number;
-  frustration?: number;
+  pride?: number;
+  relief?: number;
+  love?: number;
+  contentment?: number;
+  // Anticipation family
   hope?: number;
+  curiosity?: number;
+  determination?: number;
+  // Sadness family
+  loneliness?: number;
+  nostalgia?: number;
+  disappointment?: number;
+  // Anger family
+  frustration?: number;
+  irritation?: number;
+  envy?: number;
+  // Anxiety family
+  overwhelm?: number;
   confusion?: number;
+  guilt?: number;
+  vulnerability?: number;
+  // Other
+  boredom?: number;
+  shame?: number;
 }
 
 export interface JournalEntry {
@@ -58,8 +82,16 @@ export interface BudgetProfile {
   variableBudget: number;
 }
 
+export interface AssetGoal {
+  targetAmount: number;
+  targetDate: string;
+  label: string;
+}
+
 export interface MoneyConfig {
   assetCategories: string[];
+  assetGoal?: AssetGoal;
+  displayInManYen?: boolean;
 }
 
 export type GoalCategory = 'being' | 'life' | 'work' | 'work_short';

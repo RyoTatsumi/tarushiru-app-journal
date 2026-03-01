@@ -24,16 +24,33 @@ const journalAnalysisTool = {
           joy: { type: 'number' as const }, anger: { type: 'number' as const },
           sadness: { type: 'number' as const }, anxiety: { type: 'number' as const },
           calm: { type: 'number' as const },
+          excitement: { type: 'number' as const }, trust: { type: 'number' as const },
+          surprise: { type: 'number' as const },
         },
         required: ['joy', 'anger', 'sadness', 'anxiety', 'calm'],
       },
       subEmotions: {
         type: 'object' as const,
-        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ',
+        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ。0.3以上のもののみ返す',
         properties: {
-          fulfillment: { type: 'number' as const }, loneliness: { type: 'number' as const },
-          gratitude: { type: 'number' as const }, frustration: { type: 'number' as const },
-          hope: { type: 'number' as const }, confusion: { type: 'number' as const },
+          // 喜び系 (Joy family)
+          fulfillment: { type: 'number' as const }, gratitude: { type: 'number' as const },
+          pride: { type: 'number' as const }, relief: { type: 'number' as const },
+          love: { type: 'number' as const }, contentment: { type: 'number' as const },
+          // 期待系 (Anticipation)
+          hope: { type: 'number' as const }, curiosity: { type: 'number' as const },
+          determination: { type: 'number' as const },
+          // 悲しみ系 (Sadness)
+          loneliness: { type: 'number' as const }, nostalgia: { type: 'number' as const },
+          disappointment: { type: 'number' as const },
+          // 怒り系 (Anger)
+          frustration: { type: 'number' as const }, irritation: { type: 'number' as const },
+          envy: { type: 'number' as const },
+          // 不安系 (Anxiety)
+          overwhelm: { type: 'number' as const }, confusion: { type: 'number' as const },
+          guilt: { type: 'number' as const }, vulnerability: { type: 'number' as const },
+          // その他 (Other)
+          boredom: { type: 'number' as const }, shame: { type: 'number' as const },
         },
       },
       themes: {
@@ -132,6 +149,20 @@ export async function POST(request: NextRequest) {
 
       [今回の記録]
       "${text}"
+
+      ## 感情分析の深化ルール
+      1. **言葉の選び方から感情を読む**: 「疲れた」と「くたくた」では強度が違う。「嬉しい」と「最高」「救われた」ではニュアンスが違う。言葉の温度感を精密に数値化する。
+      2. **文脈から暗黙の感情を推測**: 「今日は何もしなかった」→ 退屈？罪悪感？安堵？文脈と過去の傾向から推測する。
+      3. **感情の複層性を捉える**: 人は同時に複数の感情を持つ。「昇進したけど不安」= joy + anxiety + pride。矛盾する感情の共存を正確に表現する。
+      4. **8つの基本感情を精密に**: joy, anger, sadness, anxiety, calm に加え、excitement（ワクワク・興奮）, trust（信頼・安心感）, surprise（驚き）も検出する。
+      5. **22のサブ感情で奥行きを**: 基本感情だけでは表現しきれない微妙な心の動きをサブ感情で捕捉する。0.3以上のもののみ返す。
+         - 喜び系: 充実感, 感謝, 誇り, 安堵, 愛情, 満足感
+         - 期待系: 希望, 好奇心, 決意
+         - 悲しみ系: 孤独, 懐かしさ, 失望
+         - 怒り系: もどかしさ, 苛立ち, 嫉妬
+         - 不安系: 圧倒感, 混乱, 罪悪感, 不安定さ
+         - その他: 退屈, 恥
+      6. **数値の精度**: 0.0〜1.0の範囲で、0.1刻みではなく0.05刻みで細かく。「少し感じる」=0.2-0.3、「はっきり感じる」=0.5-0.7、「強く感じる」=0.8-1.0。
 
       ## aiComment 生成の厳守ルール
       1. **プロフィール情報を絶対に表面に出さない**: MBTI名、Strengths名、遺伝子タイプ名、価値観のキーワードをそのまま書かない。「あなたは◯◯タイプだから」「◯◯という強みが」は禁止。代わりに、その理解を自然ににじませる。

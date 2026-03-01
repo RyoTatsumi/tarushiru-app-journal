@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { JournalEntry, UserProfile, Goal, AIMemory } from '@/types';
 import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
-import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb } from 'lucide-react';
+import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface JournalProps {
@@ -37,9 +37,33 @@ const WRITING_PROMPTS = [
 
 const DRAFT_KEY = 'tarushiru_journal_draft';
 
+// A3: Journal Templates
+const JOURNAL_TEMPLATES: { id: string; label: string; icon: React.ElementType; placeholder: string }[] = [
+  { id: 'free', label: '自由記述', icon: Edit2, placeholder: '今の気持ちや出来事を自由に書いてください...' },
+  { id: 'morning', label: '朝日記', icon: Sun, placeholder: '今日の目標・やりたいこと・体調は？\n\n今日の目標:\n体調:\n意識したいこと:' },
+  { id: 'evening', label: '夜日記', icon: Moon, placeholder: '今日あったこと・感じたこと・明日への一言\n\n今日のハイライト:\n感じたこと:\n明日の自分へ:' },
+  { id: 'gratitude', label: '感謝日記', icon: Heart, placeholder: '今日感謝したいこと3つ\n\n1. \n2. \n3. \nなぜ感謝したいか:' },
+];
+
+// Expanded Emotion Display: full 22 sub-emotions
 const SUB_EMOTION_LABELS: Record<string, string> = {
-  fulfillment: '充実', loneliness: '孤独', gratitude: '感謝',
-  frustration: 'もどかしさ', hope: '希望', confusion: '迷い',
+  fulfillment: '充実', gratitude: '感謝', pride: '誇り', relief: '安堵', love: '愛情', contentment: '満足',
+  hope: '希望', curiosity: '好奇心', determination: '決意',
+  loneliness: '孤独', nostalgia: '懐かしさ', disappointment: '失望',
+  frustration: 'もどかしさ', irritation: '苛立ち', envy: '嫉妬',
+  overwhelm: '圧倒', confusion: '迷い', guilt: '罪悪感', vulnerability: '不安定',
+  boredom: '退屈', shame: '恥',
+};
+
+// Expanded 8 primary emotions
+const EMOTION_LABELS: Record<string, string> = {
+  joy: '喜び', anger: '怒り', sadness: '悲しみ', anxiety: '不安', calm: '穏やか',
+  excitement: 'ワクワク', trust: '安心', surprise: '驚き',
+};
+
+const EMOTION_COLORS: Record<string, string> = {
+  joy: '#facc15', anger: '#f87171', sadness: '#94a3b8', anxiety: '#c084fc', calm: '#93c5fd',
+  excitement: '#fb923c', trust: '#34d399', surprise: '#f472b6',
 };
 
 export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateEntry, onDeleteEntry, profile, goals, aiMemory }) => {
@@ -57,8 +81,55 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
   const [editContent, setEditContent] = useState('');
   const [editDate, setEditDate] = useState('');
 
+  // A3: Template state
+  const [selectedTemplate, setSelectedTemplate] = useState('free');
+
   // Writing prompt
   const [writingPrompt] = useState(() => WRITING_PROMPTS[Math.floor(Math.random() * WRITING_PROMPTS.length)]);
+
+  // A1: Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTheme, setFilterTheme] = useState<string | null>(null);
+  const [filterEmotion, setFilterEmotion] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // A1: Available themes from all entries
+  const availableThemes = useMemo(() =>
+    [...new Set(entries.flatMap(e => e.analysis?.themes || []))].sort(),
+    [entries]
+  );
+
+  // A1: Filtered entries
+  const filteredEntries = useMemo(() => {
+    return entries.filter(entry => {
+      // Search query filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        if (!entry.content.toLowerCase().includes(query)) return false;
+      }
+      // Theme filter
+      if (filterTheme) {
+        if (!entry.analysis?.themes?.includes(filterTheme)) return false;
+      }
+      // Emotion filter: match if the specified emotion is the dominant one
+      if (filterEmotion) {
+        if (!entry.analysis?.emotions) return false;
+        const emotions = entry.analysis.emotions as unknown as Record<string, number>;
+        const dominantEmotion = Object.entries(emotions)
+          .sort(([, a], [, b]) => (b as number) - (a as number))[0];
+        if (!dominantEmotion || dominantEmotion[0] !== filterEmotion) return false;
+      }
+      return true;
+    });
+  }, [entries, searchQuery, filterTheme, filterEmotion]);
+
+  const hasActiveFilters = searchQuery || filterTheme || filterEmotion;
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilterTheme(null);
+    setFilterEmotion(null);
+  };
 
   // Load draft from localStorage
   useEffect(() => {
@@ -90,6 +161,7 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     autoResize();
   };
 
+  // Expanded emotionData for analysis chart (includes excitement & trust)
   const emotionData = useMemo(() => {
     return entries
       .filter(e => e.analysis && e.analysis.emotions)
@@ -98,6 +170,8 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
         joy: e.analysis?.emotions.joy || 0,
         anxiety: e.analysis?.emotions.anxiety || 0,
         calm: e.analysis?.emotions.calm || 0,
+        excitement: (e.analysis?.emotions as any)?.excitement || 0,
+        trust: (e.analysis?.emotions as any)?.trust || 0,
       }))
       .slice(-14);
   }, [entries]);
@@ -198,6 +272,9 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     }
   };
 
+  // Get current template placeholder
+  const currentTemplate = JOURNAL_TEMPLATES.find(t => t.id === selectedTemplate) || JOURNAL_TEMPLATES[0];
+
   return (
     <div className="space-y-6 pb-24">
       <header className="mb-4 flex justify-between items-center">
@@ -223,8 +300,28 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
 
       {mode === 'list' && !editingId && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-6">
-          {/* Writing prompt */}
-          {!content && (
+          {/* A3: Template selector pills */}
+          <div className="flex space-x-2 mb-3 overflow-x-auto scrollbar-hide pb-1">
+            {JOURNAL_TEMPLATES.map(t => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setSelectedTemplate(t.id);
+                }}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  selectedTemplate === t.id
+                    ? 'bg-navy-900 text-white shadow-sm'
+                    : 'bg-navy-50 text-gray-500 hover:bg-navy-100 hover:text-navy-700'
+                }`}
+              >
+                <t.icon size={12} />
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Writing prompt: show only when template is 'free' and content is empty */}
+          {selectedTemplate === 'free' && !content && (
             <div className="flex items-center space-x-2 mb-3 p-2 bg-yellow-50 rounded-lg border border-yellow-100">
               <Lightbulb size={14} className="text-yellow-500 shrink-0" />
               <span className="text-xs text-yellow-700">{writingPrompt}</span>
@@ -234,7 +331,7 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
             ref={textareaRef}
             value={content}
             onChange={handleContentChange}
-            placeholder="今の気持ちや出来事を自由に書いてください..."
+            placeholder={currentTemplate.placeholder}
             className="w-full min-h-[128px] p-3 bg-navy-50 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-navy-500 text-gray-700 placeholder-gray-400 text-sm"
           />
           <div className="mt-3 flex justify-between items-center">
@@ -274,7 +371,86 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
 
       {mode === 'list' ? (
         <div className="space-y-4">
-          {entries.slice().reverse().map((entry) => (
+          {/* A1: Search & Filter Bar */}
+          <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100">
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="日記を検索..."
+                  className="w-full pl-9 pr-3 py-2 bg-navy-50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy-500 text-gray-700 placeholder-gray-400"
+                />
+              </div>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`p-2 rounded-lg transition-all ${showFilters || hasActiveFilters ? 'bg-navy-900 text-white' : 'bg-navy-50 text-gray-400 hover:text-navy-700'}`}
+              >
+                <Filter size={16} />
+              </button>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all"
+                  title="フィルターをクリア"
+                >
+                  <XIcon size={16} />
+                </button>
+              )}
+            </div>
+
+            {showFilters && (
+              <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+                {/* Theme filter */}
+                {availableThemes.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block">テーマ</label>
+                    <select
+                      value={filterTheme || ''}
+                      onChange={e => setFilterTheme(e.target.value || null)}
+                      className="w-full px-3 py-1.5 bg-navy-50 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-navy-500"
+                    >
+                      <option value="">すべてのテーマ</option>
+                      {availableThemes.map(theme => (
+                        <option key={theme} value={theme}>{theme}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Emotion filter */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block">感情フィルター（支配的な感情）</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['joy', 'calm', 'anxiety', 'sadness', 'anger'] as const).map(emotion => (
+                      <button
+                        key={emotion}
+                        onClick={() => setFilterEmotion(filterEmotion === emotion ? null : emotion)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+                          filterEmotion === emotion
+                            ? 'text-white border-transparent shadow-sm'
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                        }`}
+                        style={filterEmotion === emotion ? { backgroundColor: EMOTION_COLORS[emotion] } : {}}
+                      >
+                        {EMOTION_LABELS[emotion]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hasActiveFilters && (
+              <div className="mt-2 text-[10px] text-gray-400">
+                {filteredEntries.length}件 / {entries.length}件の日記を表示中
+              </div>
+            )}
+          </div>
+
+          {filteredEntries.slice().reverse().map((entry) => (
             <div key={entry.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 group">
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center space-x-2 text-xs font-medium text-gray-400">
@@ -342,17 +518,27 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
 
                   {entry.analysis && (
                     <div className="relative z-10">
-                      {/* Emotion bar */}
+                      {/* Expanded Emotion bar: show all 8 emotions > 0.1 */}
                       <div>
                         <div className="flex h-1.5 rounded-full overflow-hidden bg-white/50">
-                          <div style={{ width: `${(entry.analysis.emotions.joy || 0) * 100}%` }} className="bg-yellow-400" />
-                          <div style={{ width: `${(entry.analysis.emotions.calm || 0) * 100}%` }} className="bg-blue-300" />
-                          <div style={{ width: `${(entry.analysis.emotions.anxiety || 0) * 100}%` }} className="bg-purple-400" />
-                          <div style={{ width: `${(entry.analysis.emotions.sadness || 0) * 100}%` }} className="bg-gray-400" />
-                          <div style={{ width: `${(entry.analysis.emotions.anger || 0) * 100}%` }} className="bg-red-400" />
+                          {Object.entries(entry.analysis.emotions)
+                            .filter(([, v]) => (v as number) > 0.1)
+                            .sort(([, a], [, b]) => (b as number) - (a as number))
+                            .map(([key, val]) => (
+                              <div key={key} style={{ width: `${(val as number) * 100}%`, backgroundColor: EMOTION_COLORS[key] || '#d1d5db' }} />
+                            ))
+                          }
                         </div>
+                        {/* Dynamic top 3-4 emotion labels */}
                         <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
-                          <span>Joy</span><span>Calm</span><span>Anxiety</span>
+                          {Object.entries(entry.analysis.emotions)
+                            .filter(([, v]) => (v as number) > 0.15)
+                            .sort(([, a], [, b]) => (b as number) - (a as number))
+                            .slice(0, 4)
+                            .map(([key]) => (
+                              <span key={key} style={{ color: EMOTION_COLORS[key] || '#9ca3af' }}>{EMOTION_LABELS[key] || key}</span>
+                            ))
+                          }
                         </div>
                       </div>
 
@@ -401,6 +587,8 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                   <Line type="monotone" dataKey="joy" stroke="#facc15" strokeWidth={2} name="喜び" dot={false} />
                   <Line type="monotone" dataKey="anxiety" stroke="#c084fc" strokeWidth={2} name="不安" dot={false} />
                   <Line type="monotone" dataKey="calm" stroke="#93c5fd" strokeWidth={2} name="平穏" dot={false} />
+                  <Line type="monotone" dataKey="excitement" stroke="#fb923c" strokeWidth={2} name="ワクワク" dot={false} />
+                  <Line type="monotone" dataKey="trust" stroke="#34d399" strokeWidth={2} name="安心" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
