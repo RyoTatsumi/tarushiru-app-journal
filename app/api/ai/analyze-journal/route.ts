@@ -31,7 +31,7 @@ const journalAnalysisTool = {
       },
       subEmotions: {
         type: 'object' as const,
-        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ。0.3以上のもののみ返す',
+        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ。0.3以上のもののみ返す。35種から該当するもの',
         properties: {
           // 喜び系 (Joy family)
           fulfillment: { type: 'number' as const }, gratitude: { type: 'number' as const },
@@ -49,8 +49,23 @@ const journalAnalysisTool = {
           // 不安系 (Anxiety)
           overwhelm: { type: 'number' as const }, confusion: { type: 'number' as const },
           guilt: { type: 'number' as const }, vulnerability: { type: 'number' as const },
-          // その他 (Other)
+          // 不安系追加
+          restlessness: { type: 'number' as const },
+          // つながり系 (Connection)
+          empathy: { type: 'number' as const }, self_compassion: { type: 'number' as const },
+          awe: { type: 'number' as const },
+          // エネルギー系 (Energy)
+          playfulness: { type: 'number' as const }, serenity: { type: 'number' as const },
+          exhaustion: { type: 'number' as const }, liberation: { type: 'number' as const },
+          // 内省系 (Introspection)
+          acceptance: { type: 'number' as const }, regret: { type: 'number' as const },
           boredom: { type: 'number' as const }, shame: { type: 'number' as const },
+          // 期待系追加
+          inspiration: { type: 'number' as const },
+          // 悲しみ系追加
+          melancholy: { type: 'number' as const },
+          // 怒り系追加
+          resistance: { type: 'number' as const },
         },
       },
       themes: {
@@ -155,13 +170,15 @@ export async function POST(request: NextRequest) {
       2. **文脈から暗黙の感情を推測**: 「今日は何もしなかった」→ 退屈？罪悪感？安堵？文脈と過去の傾向から推測する。
       3. **感情の複層性を捉える**: 人は同時に複数の感情を持つ。「昇進したけど不安」= joy + anxiety + pride。矛盾する感情の共存を正確に表現する。
       4. **8つの基本感情を精密に**: joy, anger, sadness, anxiety, calm に加え、excitement（ワクワク・興奮）, trust（信頼・安心感）, surprise（驚き）も検出する。
-      5. **22のサブ感情で奥行きを**: 基本感情だけでは表現しきれない微妙な心の動きをサブ感情で捕捉する。0.3以上のもののみ返す。
+      5. **35のサブ感情で奥行きを**: 基本感情だけでは表現しきれない微妙な心の動きをサブ感情で捕捉する。0.3以上のもののみ返す。
          - 喜び系: 充実感, 感謝, 誇り, 安堵, 愛情, 満足感
-         - 期待系: 希望, 好奇心, 決意
-         - 悲しみ系: 孤独, 懐かしさ, 失望
-         - 怒り系: もどかしさ, 苛立ち, 嫉妬
-         - 不安系: 圧倒感, 混乱, 罪悪感, 不安定さ
-         - その他: 退屈, 恥
+         - 期待系: 希望, 好奇心, 決意, 触発(インスピレーション)
+         - 悲しみ系: 孤独, 懐かしさ, 失望, 物悲しさ
+         - 怒り系: もどかしさ, 苛立ち, 嫉妬, 抵抗
+         - 不安系: 圧倒感, 混乱, 罪悪感, 不安定さ, 焦り
+         - つながり系: 共感, 自己慈悲, 畏敬
+         - エネルギー系: 遊び心, 静けさ, 疲弊, 解放感
+         - 内省系: 受容, 後悔, 恥, 退屈
       6. **数値の精度**: 0.0〜1.0の範囲で、0.1刻みではなく0.05刻みで細かく。「少し感じる」=0.2-0.3、「はっきり感じる」=0.5-0.7、「強く感じる」=0.8-1.0。
 
       ## aiComment 生成の厳守ルール

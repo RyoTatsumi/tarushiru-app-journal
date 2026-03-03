@@ -48,6 +48,20 @@ export interface SubEmotionScore {
   // Other
   boredom?: number;
   shame?: number;
+  // Expanded (v3)
+  empathy?: number;
+  self_compassion?: number;
+  awe?: number;
+  playfulness?: number;
+  serenity?: number;
+  restlessness?: number;
+  melancholy?: number;
+  inspiration?: number;
+  acceptance?: number;
+  resistance?: number;
+  regret?: number;
+  liberation?: number;
+  exhaustion?: number;
 }
 
 export interface JournalEntry {

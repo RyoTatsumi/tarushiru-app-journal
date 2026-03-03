@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { JournalEntry, UserProfile, Goal, AIMemory } from '@/types';
 import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
-import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter } from 'lucide-react';
+import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface JournalProps {
@@ -45,7 +45,7 @@ const JOURNAL_TEMPLATES: { id: string; label: string; icon: React.ElementType; p
   { id: 'gratitude', label: '感謝日記', icon: Heart, placeholder: '今日感謝したいこと3つ\n\n1. \n2. \n3. \nなぜ感謝したいか:' },
 ];
 
-// Expanded Emotion Display: full 22 sub-emotions
+// Expanded Emotion Display: full 35 sub-emotions
 const SUB_EMOTION_LABELS: Record<string, string> = {
   fulfillment: '充実', gratitude: '感謝', pride: '誇り', relief: '安堵', love: '愛情', contentment: '満足',
   hope: '希望', curiosity: '好奇心', determination: '決意',
@@ -53,6 +53,10 @@ const SUB_EMOTION_LABELS: Record<string, string> = {
   frustration: 'もどかしさ', irritation: '苛立ち', envy: '嫉妬',
   overwhelm: '圧倒', confusion: '迷い', guilt: '罪悪感', vulnerability: '不安定',
   boredom: '退屈', shame: '恥',
+  empathy: '共感', self_compassion: '自己慈悲', awe: '畏敬',
+  playfulness: '遊び心', serenity: '静けさ', restlessness: '焦り',
+  melancholy: '物悲しさ', inspiration: '触発', acceptance: '受容',
+  resistance: '抵抗', regret: '後悔', liberation: '解放感', exhaustion: '疲弊',
 };
 
 // Expanded 8 primary emotions
@@ -75,6 +79,10 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
   const [isGeneratingTrend, setIsGeneratingTrend] = useState(false);
   const [reportTimeframe, setReportTimeframe] = useState<Timeframe>('1m');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Re-analysis state
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [reanalysisProgress, setReanalysisProgress] = useState({ done: 0, total: 0 });
 
   // Edit State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -161,19 +169,54 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     autoResize();
   };
 
-  // Expanded emotionData for analysis chart (includes excitement & trust)
+  // Continuous emotionData: fill missing days with carried-forward values
   const emotionData = useMemo(() => {
-    return entries
+    const analyzed = entries
       .filter(e => e.analysis && e.analysis.emotions)
       .map(e => ({
-        date: new Date(e.date).toLocaleDateString(),
-        joy: e.analysis?.emotions.joy || 0,
-        anxiety: e.analysis?.emotions.anxiety || 0,
-        calm: e.analysis?.emotions.calm || 0,
-        excitement: (e.analysis?.emotions as any)?.excitement || 0,
-        trust: (e.analysis?.emotions as any)?.trust || 0,
+        dateStr: e.date.split('T')[0],
+        emotions: e.analysis!.emotions,
       }))
-      .slice(-14);
+      .sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+
+    if (analyzed.length === 0) return [];
+
+    const result: { date: string; joy: number; anxiety: number; calm: number; excitement: number; trust: number }[] = [];
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    const start = new Date(now);
+    start.setDate(start.getDate() - 13);
+    start.setHours(0, 0, 0, 0);
+
+    let lastKnown: typeof analyzed[0]['emotions'] | null = null;
+
+    // Pre-fill with any data before the 14-day window
+    const priorEntries = analyzed.filter(e => e.dateStr < start.toISOString().split('T')[0]);
+    if (priorEntries.length > 0) {
+      lastKnown = priorEntries[priorEntries.length - 1].emotions;
+    }
+
+    for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      const dayEntry = analyzed.find(e => e.dateStr === dateStr);
+
+      if (dayEntry) {
+        lastKnown = dayEntry.emotions;
+      }
+
+      if (lastKnown) {
+        result.push({
+          date: `${d.getMonth() + 1}/${d.getDate()}`,
+          joy: lastKnown.joy || 0,
+          anxiety: lastKnown.anxiety || 0,
+          calm: lastKnown.calm || 0,
+          excitement: (lastKnown as any)?.excitement || 0,
+          trust: (lastKnown as any)?.trust || 0,
+        });
+      }
+    }
+
+    return result;
   }, [entries]);
 
   const handleSubmit = async () => {
@@ -270,6 +313,50 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     } finally {
       setIsGeneratingTrend(false);
     }
+  };
+
+  // Count entries needing re-analysis (missing new emotion fields)
+  const entriesNeedingReanalysis = useMemo(() => {
+    return entries.filter(e => {
+      if (!e.analysis?.emotions) return true;
+      const emotions = e.analysis.emotions as any;
+      return emotions.excitement === undefined || emotions.trust === undefined || emotions.surprise === undefined;
+    });
+  }, [entries]);
+
+  const handleReanalyze = async () => {
+    const toReanalyze = entriesNeedingReanalysis;
+    if (toReanalyze.length === 0) return;
+
+    setIsReanalyzing(true);
+    setReanalysisProgress({ done: 0, total: toReanalyze.length });
+
+    for (let i = 0; i < toReanalyze.length; i++) {
+      try {
+        const entry = toReanalyze[i];
+        const recentEntries = entries
+          .filter(e => e.date < entry.date)
+          .slice(-3);
+        const analysis = await analyzeJournalEntry(entry.content, profile, recentEntries, goals, aiMemory);
+        // Keep original date/content/bookmarked, update analysis + aiComment
+        onUpdateEntry({
+          ...entry,
+          analysis,
+          aiComment: analysis.aiComment || entry.aiComment,
+        });
+        setReanalysisProgress({ done: i + 1, total: toReanalyze.length });
+        // Small delay to avoid rate limiting
+        if (i < toReanalyze.length - 1) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      } catch {
+        // Continue with next entry on error
+        setReanalysisProgress(prev => ({ ...prev, done: prev.done + 1 }));
+      }
+    }
+
+    setIsReanalyzing(false);
+    showToast(`${toReanalyze.length}件の日記を再分析しました`, 'success');
   };
 
   // Get current template placeholder
@@ -424,7 +511,7 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block">感情フィルター（支配的な感情）</label>
                   <div className="flex flex-wrap gap-1.5">
-                    {(['joy', 'calm', 'anxiety', 'sadness', 'anger'] as const).map(emotion => (
+                    {(['joy', 'calm', 'anxiety', 'sadness', 'anger', 'excitement', 'trust', 'surprise'] as const).map(emotion => (
                       <button
                         key={emotion}
                         onClick={() => setFilterEmotion(filterEmotion === emotion ? null : emotion)}
@@ -633,6 +720,44 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
               </div>
             )}
           </div>
+
+          {/* Re-analysis of past entries */}
+          {entriesNeedingReanalysis.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-3">
+              <div className="flex items-center space-x-2">
+                <RefreshCw size={16} className="text-navy-600" />
+                <h3 className="text-sm font-bold text-navy-900">過去の日記を再分析</h3>
+              </div>
+              <p className="text-xs text-gray-500">
+                {entriesNeedingReanalysis.length}件の日記に新しい感情分析（35種のサブ感情）が未適用です。
+                再分析すると、より精密な感情データが得られます。
+              </p>
+              {isReanalyzing ? (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="animate-spin text-navy-600" size={16} />
+                    <span className="text-xs text-navy-700 font-medium">
+                      {reanalysisProgress.done} / {reanalysisProgress.total} 件を分析中...
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="bg-navy-600 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${reanalysisProgress.total > 0 ? (reanalysisProgress.done / reanalysisProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={handleReanalyze}
+                  className="w-full bg-navy-900 text-white py-3 rounded-xl font-bold hover:bg-navy-800 transition-all flex items-center justify-center space-x-2"
+                >
+                  <RefreshCw size={18} />
+                  <span>{entriesNeedingReanalysis.length}件を再分析する</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -33,6 +33,10 @@ const SUB_EMOTION_LABELS: Record<string, string> = {
   frustration: 'もどかしさ', irritation: '苛立ち', envy: '嫉妬',
   overwhelm: '圧倒', confusion: '迷い', guilt: '罪悪感', vulnerability: '不安定',
   boredom: '退屈', shame: '恥',
+  empathy: '共感', self_compassion: '自己慈悲', awe: '畏敬',
+  playfulness: '遊び心', serenity: '静けさ', restlessness: '焦り',
+  melancholy: '物悲しさ', inspiration: '触発', acceptance: '受容',
+  resistance: '抵抗', regret: '後悔', liberation: '解放感', exhaustion: '疲弊',
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onNavigate }) => {
