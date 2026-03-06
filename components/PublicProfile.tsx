@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { UserProfile } from '@/types';
-import { User, Trophy, Heart, Target, Zap, Smile, Briefcase, Dna, ArrowRight, Share2, Sparkles, Edit2, ChevronLeft, Award, History } from 'lucide-react';
+import { User, Trophy, Heart, Target, Zap, Smile, Briefcase, Dna, ArrowRight, Share2, Sparkles, Edit2, ChevronLeft, Award, History, Check, Compass } from 'lucide-react';
 
 interface PublicProfileProps {
   profile: UserProfile;
@@ -92,7 +92,84 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({ profile, isPreview
             </div>
         )}
 
-        {/* Career & Skills (実務的な裏付け：最下部へ) */}
+        {/* Life Philosophy & Decision Style */}
+        {(profile.lifePhilosophy || profile.decisionStyle) && (
+            <div className="space-y-4">
+                {profile.lifePhilosophy && (
+                    <div className="bg-white/5 rounded-3xl p-6 border border-white/5 hover:bg-white/10 transition-colors">
+                        <div className="flex items-center space-x-2 mb-3 text-amber-400">
+                            <Compass size={16} />
+                            <h4 className="text-xs font-bold uppercase tracking-widest">Life Philosophy</h4>
+                        </div>
+                        <p className="text-sm text-navy-100 leading-relaxed italic">&ldquo;{profile.lifePhilosophy}&rdquo;</p>
+                    </div>
+                )}
+                {profile.decisionStyle && (
+                    <div className="bg-white/5 rounded-3xl p-6 border border-white/5 hover:bg-white/10 transition-colors">
+                        <div className="flex items-center space-x-2 mb-3 text-cyan-400">
+                            <Target size={16} />
+                            <h4 className="text-xs font-bold uppercase tracking-widest">Decision Style</h4>
+                        </div>
+                        <p className="text-sm text-navy-100 leading-relaxed">{profile.decisionStyle}</p>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Key Achievements */}
+        {profile.keyAchievements && profile.keyAchievements.length > 0 && (
+            <div className="bg-gradient-to-br from-amber-900/30 to-yellow-900/20 rounded-3xl p-6 border border-amber-700/30">
+                <h3 className="text-xs font-bold mb-4 flex items-center text-amber-300 uppercase tracking-widest">
+                    <Trophy size={14} className="mr-2 text-amber-400" />
+                    Key Achievements
+                </h3>
+                <div className="space-y-2">
+                    {profile.keyAchievements.map((a, i) => (
+                        <div key={i} className="flex items-start space-x-2">
+                            <Check size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                            <span className="text-sm text-navy-100">{a}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {/* Career Timeline */}
+        {profile.careerHistory && profile.careerHistory.length > 0 && (
+            <div className="bg-navy-800/50 rounded-3xl p-6 border border-navy-700">
+                <h3 className="text-xs font-bold mb-4 flex items-center text-navy-300 uppercase tracking-widest">
+                    <Briefcase size={14} className="mr-2 text-navy-400" />
+                    Career Timeline
+                </h3>
+                <div className="space-y-4">
+                    {profile.careerHistory.map((entry, i) => (
+                        <div key={entry.id || i} className="relative pl-5 border-l-2 border-navy-600 last:border-transparent">
+                            <div className="absolute -left-1.5 top-1 w-3 h-3 bg-navy-400 rounded-full border-2 border-navy-800" />
+                            <div>
+                                <p className="text-sm font-bold text-white">{entry.company}</p>
+                                <p className="text-xs text-navy-300">{entry.role}</p>
+                                <p className="text-[10px] text-navy-500 mt-0.5">{entry.period}</p>
+                                {entry.achievements.length > 0 && (
+                                    <div className="mt-2 space-y-1">
+                                        {entry.achievements.map((a, j) => (
+                                            <div key={j} className="flex items-start space-x-1.5">
+                                                <Check size={10} className="text-green-400 shrink-0 mt-0.5" />
+                                                <span className="text-[11px] text-navy-200">{a}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {entry.decisionReason && (
+                                    <p className="text-[10px] text-navy-400 italic mt-1.5">💭 {entry.decisionReason}</p>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {/* Skills & Legacy Experience */}
         {(profile.skills || profile.history) && (
             <div className="space-y-4">
                 {profile.skills && (
@@ -104,7 +181,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({ profile, isPreview
                         <p className="text-sm text-navy-100">{profile.skills as any}</p>
                     </div>
                 )}
-                {profile.history && (
+                {profile.history && (!profile.careerHistory || profile.careerHistory.length === 0) && (
                     <div className="bg-white/5 rounded-3xl p-6 border border-white/5">
                         <div className="flex items-center space-x-2 mb-3 text-navy-300">
                             <History size={16} />

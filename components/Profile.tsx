@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
-import { UserProfile, GeneticAnalysis, AppData } from '@/types';
+import { UserProfile, GeneticAnalysis, AppData, CareerEntry } from '@/types';
 import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '@/lib/aiService';
 import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database } from 'lucide-react';
 
@@ -21,9 +21,9 @@ const MBTI_TYPES = [
 ];
 
 const STRENGTHS_THEMES = [
-  "アレンジ", "運命思考", "回復志向", "学習欲", "活発性", "共感性", "競争性", "規律性", "原点思考", "公平性", 
-  "個別化", "コミュニケーション", "最上志向", "自我", "自己確信", "社交性", "収集心", "指令性", "慎重さ", "信念", 
-  "親密性", "成長促進", "責任感", "戦略性", "達成欲", "着想", "調和性", "適応性", "内省", "分析思考", 
+  "アレンジ", "運命思考", "回復志向", "学習欲", "活発性", "共感性", "競争性", "規律性", "原点思考", "公平性",
+  "個別化", "コミュニケーション", "最上志向", "自我", "自己確信", "社交性", "収集心", "指令性", "慎重さ", "信念",
+  "親密性", "成長促進", "責任感", "戦略性", "達成欲", "着想", "調和性", "適応性", "内省", "分析思考",
   "包含", "ポジティブ", "未来志向", "目標志向"
 ].sort();
 
@@ -33,9 +33,10 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
   const [formData, setFormData] = useState<UserProfile>({
       name: '', email: '', mbti: '', strengths: [], skills: [], history: '',
       careerStrengths: '', interests: '', values: '', environment: '', careerSummary: '',
-      geneticTypeRaw: '', geneticAnalysis: undefined, resumeMarkdown: ''
+      geneticTypeRaw: '', geneticAnalysis: undefined, resumeMarkdown: '',
+      careerHistory: [], keyAchievements: [], decisionStyle: '', lifePhilosophy: '',
   });
-  
+
   useEffect(() => {
       if (profile) setFormData({ ...profile, strengths: Array.isArray(profile.strengths) ? profile.strengths : [] });
   }, [profile]);
@@ -49,8 +50,17 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
   const [partnerLink, setPartnerLink] = useState('');
   const [compatibilityResult, setCompatibilityResult] = useState<string | null>(null);
 
+  // Career entry state
+  const [isAddingCareer, setIsAddingCareer] = useState(false);
+  const [careerCompany, setCareerCompany] = useState('');
+  const [careerRole, setCareerRole] = useState('');
+  const [careerPeriod, setCareerPeriod] = useState('');
+  const [careerAchievements, setCareerAchievements] = useState('');
+  const [careerDecisionReason, setCareerDecisionReason] = useState('');
+  const [newAchievement, setNewAchievement] = useState('');
+
   const handleChange = (field: keyof UserProfile, value: string) => setFormData(prev => ({ ...prev, [field]: value }));
-  
+
   const handleStrengthChange = (index: number, value: string) => {
     const newStrengths = [...formData.strengths];
     while (newStrengths.length <= index) newStrengths.push('');
@@ -64,11 +74,59 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
     setTimeout(() => setShowSaveSuccess(false), 2000);
   };
 
+  const handleAddCareerEntry = () => {
+    if (!careerCompany || !careerRole) return;
+    const entry: CareerEntry = {
+      id: Date.now().toString(),
+      company: careerCompany,
+      role: careerRole,
+      period: careerPeriod,
+      achievements: careerAchievements.split('\n').filter(a => a.trim()),
+      decisionReason: careerDecisionReason || undefined,
+    };
+    setFormData(prev => ({
+      ...prev,
+      careerHistory: [...(prev.careerHistory || []), entry]
+    }));
+    setCareerCompany(''); setCareerRole(''); setCareerPeriod('');
+    setCareerAchievements(''); setCareerDecisionReason('');
+    setIsAddingCareer(false);
+  };
+
+  const handleDeleteCareerEntry = (id: string) => {
+    showConfirm({
+      message: 'この経歴を削除しますか？',
+      confirmLabel: '削除',
+      onConfirm: () => {
+        setFormData(prev => ({
+          ...prev,
+          careerHistory: (prev.careerHistory || []).filter(c => c.id !== id)
+        }));
+      }
+    });
+  };
+
+  const handleAddKeyAchievement = () => {
+    if (!newAchievement.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      keyAchievements: [...(prev.keyAchievements || []), newAchievement.trim()]
+    }));
+    setNewAchievement('');
+  };
+
+  const handleDeleteKeyAchievement = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      keyAchievements: (prev.keyAchievements || []).filter((_, i) => i !== index)
+    }));
+  };
+
   // --- Data Backup Functions ---
   const handleExportData = () => {
       const savedData = localStorage.getItem('tarushiru_data');
       if (!savedData) return;
-      
+
       const blob = new Blob([savedData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -143,7 +201,9 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           careerStrengths: formData.careerStrengths, interests: formData.interests,
           values: formData.values, environment: formData.environment,
           geneticAnalysis: formData.geneticAnalysis, careerSummary: formData.careerSummary,
-          skills: formData.skills, history: formData.history
+          skills: formData.skills, history: formData.history,
+          careerHistory: formData.careerHistory, keyAchievements: formData.keyAchievements,
+          decisionStyle: formData.decisionStyle, lifePhilosophy: formData.lifePhilosophy,
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(dataToShare))));
       return `${window.location.origin}${window.location.pathname}#profile=${encoded}`;
@@ -223,10 +283,10 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           <h3 className="text-sm font-bold text-navy-900 border-b pb-2 flex items-center"><Dna size={16} className="mr-2 text-navy-600"/>遺伝子タイプ分析</h3>
           <div className="space-y-4">
               <label className="text-xs font-bold text-gray-500 block">遺伝子検査レポートの要約テキストを入力</label>
-              <textarea 
-                  className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-24" 
-                  value={formData.geneticTypeRaw} 
-                  onChange={e => handleChange('geneticTypeRaw', e.target.value)} 
+              <textarea
+                  className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-24"
+                  value={formData.geneticTypeRaw}
+                  onChange={e => handleChange('geneticTypeRaw', e.target.value)}
                   placeholder="例：睡眠タイプ：夜型、ストレス耐性：やや低い..."
               />
               <button onClick={handleAnalyzeGenetic} disabled={isAnalyzingGenetics || !formData.geneticTypeRaw} className="w-full bg-navy-900 text-white py-3 rounded-xl font-bold flex items-center justify-center space-x-2">
@@ -267,7 +327,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
               <div><label className="text-xs font-bold text-gray-500 block mb-1">興味・関心</label><textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-20" value={formData.interests} onChange={e => handleChange('interests', e.target.value)} /></div>
               <div><label className="text-xs font-bold text-gray-500 block mb-1">やりがい・価値観</label><textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-20" value={formData.values} onChange={e => handleChange('values', e.target.value)} /></div>
               <div><label className="text-xs font-bold text-gray-500 block mb-1">理想の環境・社風</label><textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-20" value={formData.environment} onChange={e => handleChange('environment', e.target.value)} /></div>
-              
+
               <div className="bg-navy-900 rounded-xl p-4 text-white">
                     <div className="flex justify-between items-center mb-2">
                         <h4 className="font-bold text-xs flex items-center"><Sparkles size={14} className="mr-2 text-yellow-400"/>AI 自己統合サマリー</h4>
@@ -282,38 +342,151 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           </div>
       </div>
 
-      {/* 4. Skills & History */}
+      {/* 4. Career History & Achievements (Expanded) */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-          <h3 className="text-sm font-bold text-navy-900 border-b pb-2 flex items-center"><Award size={16} className="mr-2"/>スキル・職務経歴</h3>
-          <div className="space-y-4">
-              <div>
-                  <label className="text-xs font-bold text-gray-500 block mb-1">保有スキル（言語、資格、得意分野など）</label>
-                  <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-20" value={formData.skills as any} onChange={e => handleChange('skills', e.target.value)} placeholder="React, Python, プロジェクトマネジメント..." />
-              </div>
-              <div>
-                  <label className="text-xs font-bold text-gray-500 block mb-1 flex items-center"><History size={14} className="mr-1"/>主な職務経歴・実績</label>
-                  <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-32" value={formData.history} onChange={e => handleChange('history', e.target.value)} placeholder="20XX年〜 株式会社◯◯ 入社。..." />
-              </div>
+          <h3 className="text-sm font-bold text-navy-900 border-b pb-2 flex items-center"><Briefcase size={16} className="mr-2"/>キャリア・経歴</h3>
 
-              <div className="pt-2">
-                  <button onClick={handleGenerateResume} disabled={isGeneratingResume || !formData.history} className="w-full bg-navy-50 border border-navy-200 text-navy-900 py-3 rounded-xl font-bold flex items-center justify-center space-x-2 hover:bg-navy-100 transition-colors">
-                      {isGeneratingResume ? <Loader2 className="animate-spin" size={18}/> : <FileText size={18} />}
-                      <span>AIで職務経歴書を生成</span>
-                  </button>
+          {/* Life Philosophy & Decision Style */}
+          <div className="space-y-3">
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-1 flex items-center"><Heart size={12} className="mr-1 text-red-400"/>人生哲学・座右の銘</label>
+                  <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-16" value={formData.lifePhilosophy || ''} onChange={e => handleChange('lifePhilosophy', e.target.value)} placeholder="例：「好奇心を持ち続け、変化を恐れない」" />
               </div>
+              <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-1 flex items-center"><Target size={12} className="mr-1 text-navy-600"/>意思決定スタイル</label>
+                  <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-16" value={formData.decisionStyle || ''} onChange={e => handleChange('decisionStyle', e.target.value)} placeholder="例：「データと直感の両方を大切にする。迷ったら、5年後に後悔しない方を選ぶ」" />
+              </div>
+          </div>
 
-              {formData.resumeMarkdown && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                      <div className="flex justify-between items-center mb-2">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">AI Generated Resume</span>
-                          <button onClick={() => handleChange('resumeMarkdown', '')} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+          {/* Key Achievements */}
+          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-4 rounded-xl border border-amber-100">
+              <label className="text-xs font-bold text-amber-800 block mb-2 flex items-center"><Trophy size={14} className="mr-1 text-amber-600"/>人生の主な実績・成果</label>
+              <div className="space-y-2 mb-3">
+                  {(formData.keyAchievements || []).map((achievement, i) => (
+                      <div key={i} className="flex items-start space-x-2 bg-white/80 p-2.5 rounded-lg border border-amber-100/50">
+                          <span className="text-amber-500 text-xs font-bold shrink-0 mt-0.5">{i + 1}.</span>
+                          <span className="text-xs text-gray-700 flex-1">{achievement}</span>
+                          <button onClick={() => handleDeleteKeyAchievement(i)} className="text-gray-300 hover:text-red-500 shrink-0">
+                              <Trash2 size={12} />
+                          </button>
                       </div>
-                      <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
-                          {formData.resumeMarkdown}
+                  ))}
+              </div>
+              <div className="flex space-x-2">
+                  <input
+                      value={newAchievement}
+                      onChange={e => setNewAchievement(e.target.value)}
+                      placeholder="例：年間売上150%達成、海外拠点の立ち上げ..."
+                      className="flex-1 p-2 bg-white rounded-lg text-xs border border-amber-200"
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddKeyAchievement(); } }}
+                  />
+                  <button onClick={handleAddKeyAchievement} className="bg-amber-600 text-white px-3 rounded-lg text-xs font-bold">追加</button>
+              </div>
+          </div>
+
+          {/* Career Timeline */}
+          <div>
+              <div className="flex justify-between items-center mb-3">
+                  <label className="text-xs font-bold text-gray-500 flex items-center"><History size={14} className="mr-1"/>職歴タイムライン</label>
+                  {!isAddingCareer && (
+                      <button onClick={() => setIsAddingCareer(true)} className="text-xs text-navy-600 hover:text-navy-900 font-bold">+ 追加</button>
+                  )}
+              </div>
+
+              {/* Existing career entries */}
+              <div className="space-y-3">
+                  {(formData.careerHistory || []).map((entry, i) => (
+                      <div key={entry.id} className="relative pl-6 pb-4 border-l-2 border-navy-200 last:pb-0">
+                          <div className="absolute -left-2 top-0 w-4 h-4 bg-navy-900 rounded-full border-2 border-white" />
+                          <div className="bg-navy-50 p-3 rounded-xl border border-navy-100 group">
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <p className="text-sm font-bold text-navy-900">{entry.company}</p>
+                                      <p className="text-xs text-navy-600">{entry.role}</p>
+                                      <p className="text-[10px] text-gray-400 mt-0.5">{entry.period}</p>
+                                  </div>
+                                  <button onClick={() => handleDeleteCareerEntry(entry.id)} className="text-gray-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                      <Trash2 size={14} />
+                                  </button>
+                              </div>
+                              {entry.achievements.length > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                      {entry.achievements.map((a, j) => (
+                                          <div key={j} className="flex items-start space-x-1.5">
+                                              <Check size={10} className="text-green-500 shrink-0 mt-0.5" />
+                                              <span className="text-[11px] text-gray-600">{a}</span>
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
+                              {entry.decisionReason && (
+                                  <div className="mt-2 p-2 bg-white/60 rounded-lg border border-navy-100/30">
+                                      <p className="text-[10px] text-navy-500 italic">💭 {entry.decisionReason}</p>
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+
+              {/* Add new career entry form */}
+              {isAddingCareer && (
+                  <div className="mt-3 p-4 bg-navy-50 rounded-xl border border-navy-100 space-y-3 animate-in zoom-in-95">
+                      <p className="text-xs font-bold text-navy-900">経歴を追加</p>
+                      <div className="grid grid-cols-2 gap-2">
+                          <input value={careerCompany} onChange={e => setCareerCompany(e.target.value)} placeholder="会社名" className="p-2 bg-white rounded-lg text-xs border border-gray-200" />
+                          <input value={careerRole} onChange={e => setCareerRole(e.target.value)} placeholder="役職・ポジション" className="p-2 bg-white rounded-lg text-xs border border-gray-200" />
+                      </div>
+                      <input value={careerPeriod} onChange={e => setCareerPeriod(e.target.value)} placeholder="期間（例：2020年4月〜2023年3月）" className="w-full p-2 bg-white rounded-lg text-xs border border-gray-200" />
+                      <div>
+                          <label className="text-[10px] text-gray-500 mb-1 block">成果・実績（1行に1つ）</label>
+                          <textarea value={careerAchievements} onChange={e => setCareerAchievements(e.target.value)} placeholder={"売上を前年比120%に\nチーム5名のマネジメント\n新規事業の企画・立ち上げ"} className="w-full p-2 bg-white rounded-lg text-xs border border-gray-200 h-20" />
+                      </div>
+                      <div>
+                          <label className="text-[10px] text-gray-500 mb-1 block">なぜこの選択をした？（任意）</label>
+                          <input value={careerDecisionReason} onChange={e => setCareerDecisionReason(e.target.value)} placeholder="例：「より大きな裁量を求めて」" className="w-full p-2 bg-white rounded-lg text-xs border border-gray-200" />
+                      </div>
+                      <div className="flex space-x-2">
+                          <button onClick={handleAddCareerEntry} className="flex-1 bg-navy-900 text-white py-2 rounded-lg text-xs font-bold">追加する</button>
+                          <button onClick={() => setIsAddingCareer(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs">キャンセル</button>
                       </div>
                   </div>
               )}
+
+              {/* Fallback: legacy free-text history */}
+              {(!formData.careerHistory || formData.careerHistory.length === 0) && !isAddingCareer && (
+                  <div className="mt-2">
+                      <p className="text-[10px] text-gray-400 mb-1">または自由記述で入力</p>
+                      <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-24" value={formData.history} onChange={e => handleChange('history', e.target.value)} placeholder="20XX年〜 株式会社◯◯ 入社。..." />
+                  </div>
+              )}
           </div>
+
+          {/* Skills */}
+          <div>
+              <label className="text-xs font-bold text-gray-500 block mb-1 flex items-center"><Award size={14} className="mr-1"/>保有スキル（言語、資格、得意分野など）</label>
+              <textarea className="w-full p-3 bg-navy-50 rounded-lg text-sm border border-gray-200 h-20" value={formData.skills as any} onChange={e => handleChange('skills', e.target.value)} placeholder="React, Python, プロジェクトマネジメント..." />
+          </div>
+
+          {/* Resume Generation */}
+          <div className="pt-2">
+              <button onClick={handleGenerateResume} disabled={isGeneratingResume || (!formData.history && (!formData.careerHistory || formData.careerHistory.length === 0))} className="w-full bg-navy-50 border border-navy-200 text-navy-900 py-3 rounded-xl font-bold flex items-center justify-center space-x-2 hover:bg-navy-100 transition-colors">
+                  {isGeneratingResume ? <Loader2 className="animate-spin" size={18}/> : <FileText size={18} />}
+                  <span>AIで職務経歴書を生成</span>
+              </button>
+          </div>
+
+          {formData.resumeMarkdown && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">AI Generated Resume</span>
+                      <button onClick={() => handleChange('resumeMarkdown', '')} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+                  </div>
+                  <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                      {formData.resumeMarkdown}
+                  </div>
+              </div>
+          )}
       </div>
 
       <button onClick={handleSave} className={`w-full py-4 rounded-xl font-bold flex justify-center items-center space-x-2 shadow-lg transition-all ${showSaveSuccess ? 'bg-green-500 text-white' : 'bg-navy-900 text-white active:scale-95'}`}>
@@ -328,23 +501,23 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
               機種変更時などは、現在のデータを書き出して保存し、新しいデバイスで読み込んでください。
           </p>
           <div className="grid grid-cols-2 gap-3">
-              <button 
+              <button
                 onClick={handleExportData}
                 className="bg-white border border-navy-200 text-navy-800 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-sm hover:bg-navy-100"
               >
                   <Download size={14} /><span>エクスポート</span>
               </button>
-              <button 
+              <button
                 onClick={handleImportClick}
                 className="bg-white border border-navy-200 text-navy-800 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-sm hover:bg-navy-100"
               >
                   <Upload size={14} /><span>インポート</span>
               </button>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                className="hidden" 
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
                 accept=".json"
               />
           </div>

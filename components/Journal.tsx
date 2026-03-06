@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { JournalEntry, UserProfile, Goal, AIMemory } from '@/types';
 import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
-import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw, Compass } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface JournalProps {
@@ -598,6 +598,17 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                             <span className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">問いかけ</span>
                           </div>
                           <p className="text-xs text-navy-700 leading-relaxed">{entry.analysis.coachingQuestion}</p>
+                        </div>
+                      )}
+
+                      {/* Life Reflection Question */}
+                      {entry.analysis?.lifeReflectionQuestion && (
+                        <div className="mt-3 p-3 bg-gradient-to-r from-amber-50/80 to-yellow-50/80 rounded-lg border border-amber-200/50">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <Compass size={12} className="text-amber-600" />
+                            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">人生の問い</span>
+                          </div>
+                          <p className="text-xs text-amber-900 leading-relaxed">{entry.analysis.lifeReflectionQuestion}</p>
                         </div>
                       )}
                     </div>

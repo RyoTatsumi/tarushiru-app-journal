@@ -74,6 +74,7 @@ export interface JournalEntry {
     themes: string[];
     actions: string[];
     coachingQuestion?: string;
+    lifeReflectionQuestion?: string;
   };
   aiComment?: string;
   bookmarked?: boolean;
@@ -126,6 +127,15 @@ export interface GeneticAnalysis {
   determinedType: string;
 }
 
+export interface CareerEntry {
+  id: string;
+  company: string;
+  role: string;
+  period: string;
+  achievements: string[];
+  decisionReason?: string;
+}
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -145,6 +155,12 @@ export interface UserProfile {
 
   geneticTypeRaw?: string;
   geneticAnalysis?: GeneticAnalysis;
+
+  // Career expansion (v3)
+  careerHistory?: CareerEntry[];
+  keyAchievements?: string[];
+  decisionStyle?: string;
+  lifePhilosophy?: string;
 }
 
 export interface AIMemory {
