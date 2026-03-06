@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
 import { UserProfile, GeneticAnalysis, AppData, CareerEntry } from '@/types';
 import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '@/lib/aiService';
-import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database } from 'lucide-react';
+import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database, Edit2 } from 'lucide-react';
 
 interface ProfileProps {
   profile: UserProfile | null;
@@ -52,6 +52,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
 
   // Career entry state
   const [isAddingCareer, setIsAddingCareer] = useState(false);
+  const [editingCareerId, setEditingCareerId] = useState<string | null>(null);
   const [careerCompany, setCareerCompany] = useState('');
   const [careerRole, setCareerRole] = useState('');
   const [careerPeriod, setCareerPeriod] = useState('');
@@ -74,23 +75,60 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
     setTimeout(() => setShowSaveSuccess(false), 2000);
   };
 
-  const handleAddCareerEntry = () => {
-    if (!careerCompany || !careerRole) return;
-    const entry: CareerEntry = {
-      id: Date.now().toString(),
-      company: careerCompany,
-      role: careerRole,
-      period: careerPeriod,
-      achievements: careerAchievements.split('\n').filter(a => a.trim()),
-      decisionReason: careerDecisionReason || undefined,
-    };
-    setFormData(prev => ({
-      ...prev,
-      careerHistory: [...(prev.careerHistory || []), entry]
-    }));
+  const clearCareerForm = () => {
     setCareerCompany(''); setCareerRole(''); setCareerPeriod('');
     setCareerAchievements(''); setCareerDecisionReason('');
     setIsAddingCareer(false);
+    setEditingCareerId(null);
+  };
+
+  const handleAddCareerEntry = () => {
+    if (!careerCompany || !careerRole) return;
+
+    if (editingCareerId) {
+      // Update existing entry
+      setFormData(prev => ({
+        ...prev,
+        careerHistory: (prev.careerHistory || []).map(c =>
+          c.id === editingCareerId
+            ? {
+                ...c,
+                company: careerCompany,
+                role: careerRole,
+                period: careerPeriod,
+                achievements: careerAchievements.split('\n').filter(a => a.trim()),
+                decisionReason: careerDecisionReason || undefined,
+              }
+            : c
+        )
+      }));
+      showToast('経歴を更新しました', 'success');
+    } else {
+      // Add new entry
+      const entry: CareerEntry = {
+        id: Date.now().toString(),
+        company: careerCompany,
+        role: careerRole,
+        period: careerPeriod,
+        achievements: careerAchievements.split('\n').filter(a => a.trim()),
+        decisionReason: careerDecisionReason || undefined,
+      };
+      setFormData(prev => ({
+        ...prev,
+        careerHistory: [...(prev.careerHistory || []), entry]
+      }));
+    }
+    clearCareerForm();
+  };
+
+  const handleEditCareerEntry = (entry: CareerEntry) => {
+    setEditingCareerId(entry.id);
+    setCareerCompany(entry.company);
+    setCareerRole(entry.role);
+    setCareerPeriod(entry.period);
+    setCareerAchievements(entry.achievements.join('\n'));
+    setCareerDecisionReason(entry.decisionReason || '');
+    setIsAddingCareer(true);
   };
 
   const handleDeleteCareerEntry = (id: string) => {
@@ -405,9 +443,14 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                                       <p className="text-xs text-navy-600">{entry.role}</p>
                                       <p className="text-[10px] text-gray-400 mt-0.5">{entry.period}</p>
                                   </div>
-                                  <button onClick={() => handleDeleteCareerEntry(entry.id)} className="text-gray-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                      <Trash2 size={14} />
-                                  </button>
+                                  <div className="flex space-x-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => handleEditCareerEntry(entry)} className="text-gray-300 hover:text-navy-600 transition-colors p-1" title="編集">
+                                          <Edit2 size={14} />
+                                      </button>
+                                      <button onClick={() => handleDeleteCareerEntry(entry.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1" title="削除">
+                                          <Trash2 size={14} />
+                                      </button>
+                                  </div>
                               </div>
                               {entry.achievements.length > 0 && (
                                   <div className="mt-2 space-y-1">
@@ -432,7 +475,7 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
               {/* Add new career entry form */}
               {isAddingCareer && (
                   <div className="mt-3 p-4 bg-navy-50 rounded-xl border border-navy-100 space-y-3 animate-in zoom-in-95">
-                      <p className="text-xs font-bold text-navy-900">経歴を追加</p>
+                      <p className="text-xs font-bold text-navy-900">{editingCareerId ? '経歴を編集' : '経歴を追加'}</p>
                       <div className="grid grid-cols-2 gap-2">
                           <input value={careerCompany} onChange={e => setCareerCompany(e.target.value)} placeholder="会社名" className="p-2 bg-white rounded-lg text-xs border border-gray-200" />
                           <input value={careerRole} onChange={e => setCareerRole(e.target.value)} placeholder="役職・ポジション" className="p-2 bg-white rounded-lg text-xs border border-gray-200" />
@@ -447,8 +490,8 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                           <input value={careerDecisionReason} onChange={e => setCareerDecisionReason(e.target.value)} placeholder="例：「より大きな裁量を求めて」" className="w-full p-2 bg-white rounded-lg text-xs border border-gray-200" />
                       </div>
                       <div className="flex space-x-2">
-                          <button onClick={handleAddCareerEntry} className="flex-1 bg-navy-900 text-white py-2 rounded-lg text-xs font-bold">追加する</button>
-                          <button onClick={() => setIsAddingCareer(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs">キャンセル</button>
+                          <button onClick={handleAddCareerEntry} className="flex-1 bg-navy-900 text-white py-2 rounded-lg text-xs font-bold">{editingCareerId ? '更新する' : '追加する'}</button>
+                          <button onClick={clearCareerForm} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs">キャンセル</button>
                       </div>
                   </div>
               )}
