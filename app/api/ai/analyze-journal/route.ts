@@ -90,14 +90,131 @@ const journalAnalysisTool = {
         type: 'string' as const,
         description: 'ユーザーの人生を見つめ直す深い問いかけ（1文）。目標・日記の傾向・記録期間に基づき、3年/1年/90日/30日/7日スケールでの振り返りや、人生の方向性・成長・ビジョンに関する質問。例：「過去12ヶ月で最も大きな学びは何でしたか？」「90日前と比べて、目標やビジョンはどのくらい明確になりましたか？」',
       },
+      focusInsights: {
+        type: 'object' as const,
+        description: 'フォーカスタグごとの個別コメント（50〜100文字）。選択されたタグに対してのみ返す。',
+        properties: {
+          health: { type: 'string' as const },
+          beauty: { type: 'string' as const },
+          career: { type: 'string' as const },
+          goals: { type: 'string' as const },
+          values: { type: 'string' as const },
+          relationships: { type: 'string' as const },
+          finance: { type: 'string' as const },
+          learning: { type: 'string' as const },
+          mindfulness: { type: 'string' as const },
+        },
+      },
     },
     required: ['emotions', 'themes', 'actions', 'aiComment'],
   },
 };
 
+const FOCUS_TAG_LABELS: Record<string, string> = {
+  health: '健康', beauty: '美容', career: 'キャリア', goals: '目標',
+  values: '価値観', relationships: '人間関係', finance: 'お金',
+  learning: '学び', mindfulness: 'マインドフルネス',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildFocusTagContext(focusTags: any, profile: any): string {
+  if (!focusTags?.selectedTags?.length) return '';
+  const genetic = profile?.geneticAnalysis;
+  const sections: string[] = [];
+
+  for (const tag of focusTags.selectedTags) {
+    const data = focusTags[tag] || {};
+    switch (tag) {
+      case 'health': {
+        let ctx = `[フォーカス: 健康]\n`;
+        if (data.sleepHours !== undefined) ctx += `  睡眠: ${data.sleepHours}時間\n`;
+        if (data.healthStatus) ctx += `  体調レベル: ${data.healthStatus}/5\n`;
+        if (data.exercise) ctx += `  運動: ${data.exercise}\n`;
+        if (genetic?.healthTips) ctx += `  [遺伝子的な健康傾向（にじませる参考情報）]: ${genetic.healthTips}\n`;
+        if (genetic?.determinedType) ctx += `  [体質タイプ]: ${genetic.determinedType}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'beauty': {
+        let ctx = `[フォーカス: 美容]\n`;
+        if (data.skinCondition) ctx += `  肌の調子: ${data.skinCondition}/5\n`;
+        if (data.beautyRoutine) ctx += `  ケア内容: ${data.beautyRoutine}\n`;
+        if (data.concerns) ctx += `  気になる点: ${data.concerns}\n`;
+        if (genetic?.healthTips) ctx += `  [遺伝子的な体質傾向（美容関連の参考情報）]: ${genetic.healthTips}\n`;
+        if (genetic?.lifeTips) ctx += `  [遺伝子的なライフスタイル傾向]: ${genetic.lifeTips}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'career': {
+        let ctx = `[フォーカス: キャリア]\n`;
+        if (data.achievements) ctx += `  今日の成果: ${data.achievements}\n`;
+        if (data.challenges) ctx += `  課題: ${data.challenges}\n`;
+        if (data.learnings) ctx += `  学び: ${data.learnings}\n`;
+        if (genetic?.workTips) ctx += `  [遺伝子的なワークスタイル傾向（参考情報）]: ${genetic.workTips}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'goals': {
+        let ctx = `[フォーカス: 目標]\n`;
+        if (data.progressReflection) ctx += `  進捗の振り返り: ${data.progressReflection}\n`;
+        if (data.nextAction) ctx += `  次のアクション: ${data.nextAction}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'values': {
+        let ctx = `[フォーカス: 価値観]\n`;
+        if (data.reflection) ctx += `  内省: ${data.reflection}\n`;
+        if (data.alignment) ctx += `  価値観一致度: ${data.alignment}/5\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'relationships': {
+        let ctx = `[フォーカス: 人間関係]\n`;
+        if (data.interactions) ctx += `  人との関わり: ${data.interactions}\n`;
+        if (data.gratitude) ctx += `  感謝: ${data.gratitude}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'finance': {
+        let ctx = `[フォーカス: お金]\n`;
+        if (data.spending) ctx += `  支出メモ: ${data.spending}\n`;
+        if (data.financialMood) ctx += `  お金の安心度: ${data.financialMood}/5\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'learning': {
+        let ctx = `[フォーカス: 学び]\n`;
+        if (data.topic) ctx += `  学んだこと: ${data.topic}\n`;
+        if (data.source) ctx += `  情報源: ${data.source}\n`;
+        if (data.insight) ctx += `  気づき: ${data.insight}\n`;
+        sections.push(ctx);
+        break;
+      }
+      case 'mindfulness': {
+        let ctx = `[フォーカス: マインドフルネス]\n`;
+        if (data.meditation) ctx += `  瞑想: 実施\n`;
+        if (data.gratitudeNote) ctx += `  感謝メモ: ${data.gratitudeNote}\n`;
+        if (data.mood) ctx += `  心の穏やかさ: ${data.mood}/5\n`;
+        sections.push(ctx);
+        break;
+      }
+    }
+  }
+
+  const tagLabels = focusTags.selectedTags.map((t: string) => FOCUS_TAG_LABELS[t] || t).join('、');
+  return `
+    [フォーカスタグ情報]
+    ユーザーが今回の日記で特に意識しているテーマ: ${tagLabels}
+    ${sections.join('\n')}
+    ※ フォーカスタグに基づいて、aiCommentではこれらのテーマに自然に触れてください。
+    ※ 遺伝子ベースの情報は直接言及せず「にじませる」こと。
+    ※ 各フォーカスタグについて focusInsights で個別のコメント(50〜100文字)も返してください。
+  `;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { text, profile, pastEntries, goals, aiMemory } = await request.json();
+    const { text, profile, pastEntries, goals, aiMemory, focusTags } = await request.json();
 
     // プロフィールコンテキスト
     const profileContext = profile ? `
@@ -158,6 +275,8 @@ export async function POST(request: NextRequest) {
       `
       : '';
 
+    const focusContext = buildFocusTagContext(focusTags, profile);
+
     const prompt = `
       あなたは、ユーザーの人生を深く理解し、魂の成長を支援する「専属ライフ・パートナーAI」です。
       カウンセラーやコーチ以上に、ユーザーの「本質（プロフィール）」と「文脈（過去）」を理解している存在として振る舞ってください。
@@ -167,6 +286,8 @@ export async function POST(request: NextRequest) {
       ${historyContext}
 
       ${goalsContext}
+
+      ${focusContext}
 
       ${memoryContext}
 
@@ -205,8 +326,12 @@ export async function POST(request: NextRequest) {
       日記の内容が目標に関連していれば自然に触れる。ただし「目標に書いてあった〜」とは言わず、「最近意識していることと繋がっている感じがします」のように間接的に。
 
       ## 人生を見つめ直す問い（lifeReflectionQuestion）
-      ユーザーの目標・日記の志向性・記録期間から読み取り、人生を豊かにする深い問いを1つ投げかける。
-      目的は、この問いによって内省が深まり、人生の方向性が明確になること。
+      **重要: この問いは毎回出すのではなく、4〜5回に1回程度の頻度で出す。**
+      日記の内容が特に深い内省や転機・葛藤・大きな決断を含む場合にのみ出す。
+      日常的な記録や軽い内容の場合は、lifeReflectionQuestionを省略する（返さない）。
+
+      出す場合は、ユーザーの目標・日記の志向性・記録期間から読み取り、人生を豊かにする深い問いを1つ投げかける。
+      目的は、この問いが次回の日記のトピックとなり、内省が深まること。
 
       問いの方向性（記録の文脈に応じて選ぶ）:
       - **長期スケール**: 「過去3年間でどんな成長をしましたか？」「人生で最も誇りに思う決断は？」
@@ -220,10 +345,28 @@ export async function POST(request: NextRequest) {
       - 日記の内容や目標に自然に接続する問いにする
       - 抽象的すぎず、具体的に答えられるものにする
       - 押し付けがましくなく、穏やかに投げかける
-      - 毎回異なる方向性の問いを出す（過去の問いと被らない）
+      - 通常の日記（日常報告、軽い感想）では出さない。深い内容のときだけ出す
 
       ## テーマの選択
       以下のリストから2〜4つ選んでください: ${THEME_TAXONOMY.join(', ')}
+
+      ${focusTags?.selectedTags?.length ? `
+      ## フォーカスタグ対応ルール
+      ユーザーが「${focusTags.selectedTags.map((t: string) => FOCUS_TAG_LABELS[t] || t).join('、')}」をフォーカスに選んでいます。
+
+      1. **aiComment**: 全体的なコメントの中で、選択されたフォーカステーマに自然に触れる。複数選択されている場合はバランスよく言及する。
+      2. **focusInsights**: 各フォーカスタグについて50〜100文字の個別コメントを返す。
+         - 健康: 睡眠時間・体調データと体質傾向を踏まえた具体的アドバイス。「あなたの体質は〜」とは言わず自然に。
+         - 美容: 肌の調子データと体質傾向を踏まえた助言。
+         - キャリア: 成果・課題から読み取れる成長パターンへの気づき。
+         - 目標: 進捗の振り返りと次のアクションへのフィードバック。
+         - 価値観: 内省の深さへの共感と新たな視点の提供。
+         - 人間関係: つながりの質への気づき。
+         - お金: 経済的な安心感についての前向きなコメント。
+         - 学び: 知的好奇心への肯定と学びの応用への示唆。
+         - マインドフルネス: 心の状態への共感と継続の価値の言語化。
+      3. 構造化データが空でも、タグが選択されていればそのテーマに触れる。
+      ` : ''}
 
       submit_journal_analysis ツールを使って結果を返してください。
     `;
@@ -231,7 +374,7 @@ export async function POST(request: NextRequest) {
     const result = await callWithRetry(async () => {
       return await getAnthropicClient().messages.create({
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 1500,
         tools: [journalAnalysisTool],
         tool_choice: { type: 'tool', name: 'submit_journal_analysis' },
         messages: [{ role: 'user', content: prompt }],

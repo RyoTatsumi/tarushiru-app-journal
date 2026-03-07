@@ -1,4 +1,4 @@
-import { UserProfile, JournalEntry, Goal, AIMemory } from '@/types';
+import { UserProfile, JournalEntry, Goal, AIMemory, FocusTagData } from '@/types';
 
 async function callApi(endpoint: string, body: unknown) {
   const response = await fetch(`/api/ai/${endpoint}`, {
@@ -19,9 +19,10 @@ export const analyzeJournalEntry = async (
   profile: UserProfile | null,
   pastEntries: JournalEntry[] = [],
   goals: Goal[] = [],
-  aiMemory?: AIMemory
+  aiMemory?: AIMemory,
+  focusTags?: FocusTagData
 ) => {
-  return callApi('analyze-journal', { text, profile, pastEntries, goals, aiMemory });
+  return callApi('analyze-journal', { text, profile, pastEntries, goals, aiMemory, focusTags });
 };
 
 export const analyzeCompatibility = async (

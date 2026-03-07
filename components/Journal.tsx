@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { JournalEntry, UserProfile, Goal, AIMemory } from '@/types';
+import { JournalEntry, UserProfile, Goal, AIMemory, FocusTag, FocusTagData } from '@/types';
 import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
-import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw, Compass } from 'lucide-react';
+import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw, Compass, Activity, Briefcase, Target, Users, BookOpen, DollarSign } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface JournalProps {
@@ -44,6 +44,27 @@ const JOURNAL_TEMPLATES: { id: string; label: string; icon: React.ElementType; p
   { id: 'evening', label: '夜日記', icon: Moon, placeholder: '今日あったこと・感じたこと・明日への一言\n\n今日のハイライト:\n感じたこと:\n明日の自分へ:' },
   { id: 'gratitude', label: '感謝日記', icon: Heart, placeholder: '今日感謝したいこと3つ\n\n1. \n2. \n3. \nなぜ感謝したいか:' },
 ];
+
+// Focus Tags
+const FOCUS_TAGS: { id: FocusTag; label: string; icon: React.ElementType; color: string }[] = [
+  { id: 'health', label: '健康', icon: Activity, color: '#22c55e' },
+  { id: 'beauty', label: '美容', icon: Sparkles, color: '#f472b6' },
+  { id: 'career', label: 'キャリア', icon: Briefcase, color: '#3b82f6' },
+  { id: 'goals', label: '目標', icon: Target, color: '#f59e0b' },
+  { id: 'values', label: '価値観', icon: Compass, color: '#8b5cf6' },
+  { id: 'relationships', label: '人間関係', icon: Users, color: '#ec4899' },
+  { id: 'finance', label: 'お金', icon: DollarSign, color: '#10b981' },
+  { id: 'learning', label: '学び', icon: BookOpen, color: '#6366f1' },
+  { id: 'mindfulness', label: 'マインドフルネス', icon: Heart, color: '#14b8a6' },
+];
+
+const LEVEL_LABELS_5: Record<string, string[]> = {
+  health: ['不調', 'やや不調', '普通', '良好', '絶好調'],
+  beauty: ['荒れ気味', 'やや不調', '普通', '好調', '絶好調'],
+  values: ['ずれている', 'やや', 'まあまあ', '近い', 'ぴったり'],
+  finance: ['不安', 'やや不安', '普通', '安心', 'とても安心'],
+  mindfulness: ['乱れ', 'やや乱れ', '普通', '穏やか', 'とても穏やか'],
+};
 
 // Expanded Emotion Display: full 35 sub-emotions
 const SUB_EMOTION_LABELS: Record<string, string> = {
@@ -92,8 +113,24 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
   // A3: Template state
   const [selectedTemplate, setSelectedTemplate] = useState('free');
 
+  // Focus Tags state
+  const [selectedFocusTags, setSelectedFocusTags] = useState<FocusTag[]>([]);
+  const [focusInputs, setFocusInputs] = useState<Partial<FocusTagData>>({});
+
   // Writing prompt
   const [writingPrompt] = useState(() => WRITING_PROMPTS[Math.floor(Math.random() * WRITING_PROMPTS.length)]);
+
+  // Life reflection question from a recent entry (shown as a writing topic)
+  const latestLifeQuestion = useMemo(() => {
+    // Find the most recent entry that has a lifeReflectionQuestion
+    const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+    for (const entry of sorted) {
+      if (entry.analysis?.lifeReflectionQuestion) {
+        return entry.analysis.lifeReflectionQuestion;
+      }
+    }
+    return null;
+  }, [entries]);
 
   // A1: Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,6 +168,20 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     });
   }, [entries, searchQuery, filterTheme, filterEmotion]);
 
+  // Focus Tag helpers
+  const toggleFocusTag = (tag: FocusTag) => {
+    setSelectedFocusTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const updateFocusInput = (tag: FocusTag, field: string, value: unknown) => {
+    setFocusInputs(prev => ({
+      ...prev,
+      [tag]: { ...(prev[tag as keyof typeof prev] as Record<string, unknown> || {}), [field]: value },
+    }));
+  };
+
   const hasActiveFilters = searchQuery || filterTheme || filterEmotion;
 
   const clearFilters = () => {
@@ -139,20 +190,33 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     setFilterEmotion(null);
   };
 
-  // Load draft from localStorage
+  // Load draft from localStorage (supports both old string and new object format)
   useEffect(() => {
     const draft = localStorage.getItem(DRAFT_KEY);
-    if (draft) setContent(draft);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        if (typeof parsed === 'object' && parsed.content !== undefined) {
+          setContent(parsed.content || '');
+          if (parsed.focusTags) setSelectedFocusTags(parsed.focusTags);
+          if (parsed.focusInputs) setFocusInputs(parsed.focusInputs);
+        } else {
+          setContent(draft);
+        }
+      } catch {
+        setContent(draft);
+      }
+    }
   }, []);
 
   // Save draft
   const saveDraft = useCallback((text: string) => {
     if (text.trim()) {
-      localStorage.setItem(DRAFT_KEY, text);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ content: text, focusTags: selectedFocusTags, focusInputs }));
     } else {
       localStorage.removeItem(DRAFT_KEY);
     }
-  }, []);
+  }, [selectedFocusTags, focusInputs]);
 
   // Auto-resize textarea
   const autoResize = useCallback(() => {
@@ -225,17 +289,24 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     setIsAnalyzing(true);
     try {
       const recentEntries = entries.slice(-5);
-      const analysis = await analyzeJournalEntry(content, profile, recentEntries, goals, aiMemory);
+      const focusTagData: FocusTagData | undefined = selectedFocusTags.length > 0
+        ? { selectedTags: selectedFocusTags, ...focusInputs } as FocusTagData
+        : undefined;
+
+      const analysis = await analyzeJournalEntry(content, profile, recentEntries, goals, aiMemory, focusTagData);
       const newEntry: JournalEntry = {
         id: Date.now().toString(),
         date: new Date().toISOString(),
         content,
+        focusTags: focusTagData,
         analysis,
         aiComment: analysis.aiComment
       };
 
       onAddEntry(newEntry);
       setContent('');
+      setSelectedFocusTags([]);
+      setFocusInputs({});
       localStorage.removeItem(DRAFT_KEY);
       showToast('日記を保存しました', 'success');
     } catch {
@@ -407,12 +478,225 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
             ))}
           </div>
 
+          {/* Focus Tag Selector */}
+          <div className="mb-3">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block">フォーカス（任意）</label>
+            <div className="flex space-x-2 overflow-x-auto scrollbar-hide pb-1">
+              {FOCUS_TAGS.map(tag => {
+                const isSelected = selectedFocusTags.includes(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => toggleFocusTag(tag.id)}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
+                      isSelected
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                    }`}
+                    style={isSelected ? { backgroundColor: tag.color } : {}}
+                  >
+                    <tag.icon size={12} />
+                    <span>{tag.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Conditional structured inputs for selected focus tags */}
+          {selectedFocusTags.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {selectedFocusTags.includes('health') && (
+                <div className="p-3 bg-green-50 rounded-xl border-l-4 border-green-400 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-green-800">睡眠時間</label>
+                    <div className="flex items-center space-x-2">
+                      <input type="number" min={0} max={12} step={0.5}
+                        value={(focusInputs.health as any)?.sleepHours ?? ''}
+                        onChange={e => updateFocusInput('health', 'sleepHours', e.target.value ? parseFloat(e.target.value) : undefined)}
+                        className="w-16 p-1.5 bg-white rounded-lg text-xs text-center border border-green-200"
+                        placeholder="--"
+                      />
+                      <span className="text-xs text-green-600">時間</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-green-800 mb-1 block">体調</label>
+                    <div className="flex space-x-1">
+                      {LEVEL_LABELS_5.health.map((label, i) => (
+                        <button key={i} onClick={() => updateFocusInput('health', 'healthStatus', i + 1)}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                            (focusInputs.health as any)?.healthStatus === i + 1
+                              ? 'bg-green-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <input placeholder="運動メモ（任意）" value={(focusInputs.health as any)?.exercise || ''}
+                    onChange={e => updateFocusInput('health', 'exercise', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-green-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('beauty') && (
+                <div className="p-3 bg-pink-50 rounded-xl border-l-4 border-pink-400 space-y-2.5">
+                  <div>
+                    <label className="text-xs font-bold text-pink-800 mb-1 block">肌の調子</label>
+                    <div className="flex space-x-1">
+                      {LEVEL_LABELS_5.beauty.map((label, i) => (
+                        <button key={i} onClick={() => updateFocusInput('beauty', 'skinCondition', i + 1)}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                            (focusInputs.beauty as any)?.skinCondition === i + 1
+                              ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <input placeholder="実施したケア（任意）" value={(focusInputs.beauty as any)?.beautyRoutine || ''}
+                    onChange={e => updateFocusInput('beauty', 'beautyRoutine', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-pink-200" />
+                  <input placeholder="気になる点（任意）" value={(focusInputs.beauty as any)?.concerns || ''}
+                    onChange={e => updateFocusInput('beauty', 'concerns', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-pink-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('career') && (
+                <div className="p-3 bg-blue-50 rounded-xl border-l-4 border-blue-400 space-y-2.5">
+                  <input placeholder="今日の成果・進捗（任意）" value={(focusInputs.career as any)?.achievements || ''}
+                    onChange={e => updateFocusInput('career', 'achievements', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-blue-200" />
+                  <input placeholder="課題・壁（任意）" value={(focusInputs.career as any)?.challenges || ''}
+                    onChange={e => updateFocusInput('career', 'challenges', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-blue-200" />
+                  <input placeholder="学び・気づき（任意）" value={(focusInputs.career as any)?.learnings || ''}
+                    onChange={e => updateFocusInput('career', 'learnings', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-blue-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('goals') && (
+                <div className="p-3 bg-amber-50 rounded-xl border-l-4 border-amber-400 space-y-2.5">
+                  <input placeholder="進捗の振り返り（任意）" value={(focusInputs.goals as any)?.progressReflection || ''}
+                    onChange={e => updateFocusInput('goals', 'progressReflection', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-amber-200" />
+                  <input placeholder="次のアクション（任意）" value={(focusInputs.goals as any)?.nextAction || ''}
+                    onChange={e => updateFocusInput('goals', 'nextAction', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-amber-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('values') && (
+                <div className="p-3 bg-purple-50 rounded-xl border-l-4 border-purple-400 space-y-2.5">
+                  <input placeholder="価値観に関する内省（任意）" value={(focusInputs.values as any)?.reflection || ''}
+                    onChange={e => updateFocusInput('values', 'reflection', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-purple-200" />
+                  <div>
+                    <label className="text-xs font-bold text-purple-800 mb-1 block">今日の自分と価値観の一致度</label>
+                    <div className="flex space-x-1">
+                      {LEVEL_LABELS_5.values.map((label, i) => (
+                        <button key={i} onClick={() => updateFocusInput('values', 'alignment', i + 1)}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                            (focusInputs.values as any)?.alignment === i + 1
+                              ? 'bg-purple-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedFocusTags.includes('relationships') && (
+                <div className="p-3 bg-pink-50 rounded-xl border-l-4 border-pink-300 space-y-2.5">
+                  <input placeholder="人との関わり（任意）" value={(focusInputs.relationships as any)?.interactions || ''}
+                    onChange={e => updateFocusInput('relationships', 'interactions', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-pink-200" />
+                  <input placeholder="感謝したい人・こと（任意）" value={(focusInputs.relationships as any)?.gratitude || ''}
+                    onChange={e => updateFocusInput('relationships', 'gratitude', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-pink-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('finance') && (
+                <div className="p-3 bg-emerald-50 rounded-xl border-l-4 border-emerald-400 space-y-2.5">
+                  <input placeholder="支出メモ（任意）" value={(focusInputs.finance as any)?.spending || ''}
+                    onChange={e => updateFocusInput('finance', 'spending', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-emerald-200" />
+                  <div>
+                    <label className="text-xs font-bold text-emerald-800 mb-1 block">お金に対する安心度</label>
+                    <div className="flex space-x-1">
+                      {LEVEL_LABELS_5.finance.map((label, i) => (
+                        <button key={i} onClick={() => updateFocusInput('finance', 'financialMood', i + 1)}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                            (focusInputs.finance as any)?.financialMood === i + 1
+                              ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedFocusTags.includes('learning') && (
+                <div className="p-3 bg-indigo-50 rounded-xl border-l-4 border-indigo-400 space-y-2.5">
+                  <input placeholder="学んだこと（任意）" value={(focusInputs.learning as any)?.topic || ''}
+                    onChange={e => updateFocusInput('learning', 'topic', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-indigo-200" />
+                  <input placeholder="情報源（任意）" value={(focusInputs.learning as any)?.source || ''}
+                    onChange={e => updateFocusInput('learning', 'source', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-indigo-200" />
+                  <input placeholder="気づき（任意）" value={(focusInputs.learning as any)?.insight || ''}
+                    onChange={e => updateFocusInput('learning', 'insight', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-indigo-200" />
+                </div>
+              )}
+
+              {selectedFocusTags.includes('mindfulness') && (
+                <div className="p-3 bg-teal-50 rounded-xl border-l-4 border-teal-400 space-y-2.5">
+                  <button
+                    onClick={() => updateFocusInput('mindfulness', 'meditation', !(focusInputs.mindfulness as any)?.meditation)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                      (focusInputs.mindfulness as any)?.meditation
+                        ? 'bg-teal-500 text-white border-transparent' : 'bg-white text-gray-500 border-gray-200'
+                    }`}
+                  >{(focusInputs.mindfulness as any)?.meditation ? '瞑想した' : '瞑想'}</button>
+                  <input placeholder="感謝メモ（任意）" value={(focusInputs.mindfulness as any)?.gratitudeNote || ''}
+                    onChange={e => updateFocusInput('mindfulness', 'gratitudeNote', e.target.value)}
+                    className="w-full p-2 bg-white rounded-lg text-xs border border-teal-200" />
+                  <div>
+                    <label className="text-xs font-bold text-teal-800 mb-1 block">心の穏やかさ</label>
+                    <div className="flex space-x-1">
+                      {LEVEL_LABELS_5.mindfulness.map((label, i) => (
+                        <button key={i} onClick={() => updateFocusInput('mindfulness', 'mood', i + 1)}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                            (focusInputs.mindfulness as any)?.mood === i + 1
+                              ? 'bg-teal-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Writing prompt: show only when template is 'free' and content is empty */}
           {selectedTemplate === 'free' && !content && (
-            <div className="flex items-center space-x-2 mb-3 p-2 bg-yellow-50 rounded-lg border border-yellow-100">
-              <Lightbulb size={14} className="text-yellow-500 shrink-0" />
-              <span className="text-xs text-yellow-700">{writingPrompt}</span>
-            </div>
+            <>
+              {latestLifeQuestion && (
+                <div className="flex items-start space-x-2 mb-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200/60">
+                  <Compass size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block mb-1">人生の問い</span>
+                    <span className="text-xs text-amber-900 leading-relaxed">{latestLifeQuestion}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center space-x-2 mb-3 p-2 bg-yellow-50 rounded-lg border border-yellow-100">
+                <Lightbulb size={14} className="text-yellow-500 shrink-0" />
+                <span className="text-xs text-yellow-700">{writingPrompt}</span>
+              </div>
+            </>
           )}
           <textarea
             ref={textareaRef}
@@ -562,6 +846,25 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                 </div>
               </div>
 
+              {/* Focus tag badges */}
+              {entry.focusTags?.selectedTags && entry.focusTags.selectedTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {entry.focusTags.selectedTags.map(tagId => {
+                    const tagDef = FOCUS_TAGS.find(t => t.id === tagId);
+                    if (!tagDef) return null;
+                    return (
+                      <span key={tagId}
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
+                        style={{ backgroundColor: tagDef.color }}
+                      >
+                        <tagDef.icon size={10} />
+                        <span>{tagDef.label}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
               <p className="text-gray-800 whitespace-pre-wrap leading-relaxed mb-4 text-sm">{entry.content}</p>
 
               {(entry.analysis || entry.aiComment) && (
@@ -609,6 +912,27 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                             <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">人生の問い</span>
                           </div>
                           <p className="text-xs text-amber-900 leading-relaxed">{entry.analysis.lifeReflectionQuestion}</p>
+                        </div>
+                      )}
+
+                      {/* Focus Insights */}
+                      {entry.analysis?.focusInsights && Object.keys(entry.analysis.focusInsights).length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {Object.entries(entry.analysis.focusInsights).map(([tagId, insight]) => {
+                            const tagDef = FOCUS_TAGS.find(t => t.id === tagId);
+                            if (!tagDef || !insight) return null;
+                            return (
+                              <div key={tagId} className="p-2.5 bg-white/60 rounded-lg border border-navy-100/50">
+                                <div className="flex items-center space-x-1.5 mb-1">
+                                  <tagDef.icon size={12} style={{ color: tagDef.color }} />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: tagDef.color }}>
+                                    {tagDef.label}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-navy-700 leading-relaxed">{insight}</p>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

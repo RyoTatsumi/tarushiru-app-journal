@@ -64,10 +64,77 @@ export interface SubEmotionScore {
   exhaustion?: number;
 }
 
+// Focus Tags
+export type FocusTag = 'health' | 'beauty' | 'career' | 'goals' | 'values' | 'relationships' | 'finance' | 'learning' | 'mindfulness';
+
+export interface HealthInput {
+  sleepHours?: number;
+  healthStatus?: 1 | 2 | 3 | 4 | 5;
+  exercise?: string;
+}
+
+export interface BeautyInput {
+  skinCondition?: 1 | 2 | 3 | 4 | 5;
+  beautyRoutine?: string;
+  concerns?: string;
+}
+
+export interface CareerInput {
+  achievements?: string;
+  challenges?: string;
+  learnings?: string;
+}
+
+export interface GoalsInput {
+  progressReflection?: string;
+  nextAction?: string;
+}
+
+export interface ValuesInput {
+  reflection?: string;
+  alignment?: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface RelationshipsInput {
+  interactions?: string;
+  gratitude?: string;
+}
+
+export interface FinanceInput {
+  spending?: string;
+  financialMood?: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface LearningInput {
+  topic?: string;
+  source?: string;
+  insight?: string;
+}
+
+export interface MindfulnessInput {
+  meditation?: boolean;
+  gratitudeNote?: string;
+  mood?: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface FocusTagData {
+  selectedTags: FocusTag[];
+  health?: HealthInput;
+  beauty?: BeautyInput;
+  career?: CareerInput;
+  goals?: GoalsInput;
+  values?: ValuesInput;
+  relationships?: RelationshipsInput;
+  finance?: FinanceInput;
+  learning?: LearningInput;
+  mindfulness?: MindfulnessInput;
+}
+
 export interface JournalEntry {
   id: string;
   date: string;
   content: string;
+  focusTags?: FocusTagData;
   analysis?: {
     emotions: EmotionScore;
     subEmotions?: SubEmotionScore;
@@ -75,6 +142,7 @@ export interface JournalEntry {
     actions: string[];
     coachingQuestion?: string;
     lifeReflectionQuestion?: string;
+    focusInsights?: Record<string, string>;
   };
   aiComment?: string;
   bookmarked?: boolean;
