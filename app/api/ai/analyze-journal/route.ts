@@ -10,105 +10,111 @@ const THEME_TAXONOMY = [
   '日常・ルーティン', '創造・表現', '社会・貢献'
 ];
 
-// tool_use スキーマ（#5改善）
-const journalAnalysisTool = {
-  name: 'submit_journal_analysis',
-  description: '日記エントリーの分析結果をJSON形式で返す',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      emotions: {
-        type: 'object' as const,
-        description: 'コア感情スコア（0.0〜1.0）',
-        properties: {
-          joy: { type: 'number' as const }, anger: { type: 'number' as const },
-          sadness: { type: 'number' as const }, anxiety: { type: 'number' as const },
-          calm: { type: 'number' as const },
-          excitement: { type: 'number' as const }, trust: { type: 'number' as const },
-          surprise: { type: 'number' as const },
-        },
-        required: ['joy', 'anger', 'sadness', 'anxiety', 'calm'],
+// tool_use スキーマ（#5改善）- focusInsightsはタグ選択時のみ動的に追加
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildJournalAnalysisTool(hasFocusTags: boolean, selectedTags?: string[]) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const properties: Record<string, any> = {
+    emotions: {
+      type: 'object' as const,
+      description: 'コア感情スコア（0.0〜1.0）',
+      properties: {
+        joy: { type: 'number' as const }, anger: { type: 'number' as const },
+        sadness: { type: 'number' as const }, anxiety: { type: 'number' as const },
+        calm: { type: 'number' as const },
+        excitement: { type: 'number' as const }, trust: { type: 'number' as const },
+        surprise: { type: 'number' as const },
       },
-      subEmotions: {
-        type: 'object' as const,
-        description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ。0.3以上のもののみ返す。35種から該当するもの',
-        properties: {
-          // 喜び系 (Joy family)
-          fulfillment: { type: 'number' as const }, gratitude: { type: 'number' as const },
-          pride: { type: 'number' as const }, relief: { type: 'number' as const },
-          love: { type: 'number' as const }, contentment: { type: 'number' as const },
-          // 期待系 (Anticipation)
-          hope: { type: 'number' as const }, curiosity: { type: 'number' as const },
-          determination: { type: 'number' as const },
-          // 悲しみ系 (Sadness)
-          loneliness: { type: 'number' as const }, nostalgia: { type: 'number' as const },
-          disappointment: { type: 'number' as const },
-          // 怒り系 (Anger)
-          frustration: { type: 'number' as const }, irritation: { type: 'number' as const },
-          envy: { type: 'number' as const },
-          // 不安系 (Anxiety)
-          overwhelm: { type: 'number' as const }, confusion: { type: 'number' as const },
-          guilt: { type: 'number' as const }, vulnerability: { type: 'number' as const },
-          // 不安系追加
-          restlessness: { type: 'number' as const },
-          // つながり系 (Connection)
-          empathy: { type: 'number' as const }, self_compassion: { type: 'number' as const },
-          awe: { type: 'number' as const },
-          // エネルギー系 (Energy)
-          playfulness: { type: 'number' as const }, serenity: { type: 'number' as const },
-          exhaustion: { type: 'number' as const }, liberation: { type: 'number' as const },
-          // 内省系 (Introspection)
-          acceptance: { type: 'number' as const }, regret: { type: 'number' as const },
-          boredom: { type: 'number' as const }, shame: { type: 'number' as const },
-          // 期待系追加
-          inspiration: { type: 'number' as const },
-          // 悲しみ系追加
-          melancholy: { type: 'number' as const },
-          // 怒り系追加
-          resistance: { type: 'number' as const },
-        },
-      },
-      themes: {
-        type: 'array' as const,
-        items: { type: 'string' as const },
-        description: `テーマタグ（以下のリストから2〜4つ選択）: ${THEME_TAXONOMY.join(', ')}`,
-      },
-      actions: {
-        type: 'array' as const,
-        items: { type: 'string' as const },
-        description: '記録された行動事実',
-      },
-      aiComment: {
-        type: 'string' as const,
-        description: '150〜250文字の温かいフィードバック。ユーザーの特性データは直接言及せず、その理解を「にじませる」こと。過去の流れとの変化や気づきに触れ、内省や自己肯定感を促す。',
-      },
-      coachingQuestion: {
-        type: 'string' as const,
-        description: 'ユーザーへの内省を促す問いかけ（1文）',
-      },
-      lifeReflectionQuestion: {
-        type: 'string' as const,
-        description: 'ユーザーの人生を見つめ直す深い問いかけ（1文）。目標・日記の傾向・記録期間に基づき、3年/1年/90日/30日/7日スケールでの振り返りや、人生の方向性・成長・ビジョンに関する質問。例：「過去12ヶ月で最も大きな学びは何でしたか？」「90日前と比べて、目標やビジョンはどのくらい明確になりましたか？」',
-      },
-      focusInsights: {
-        type: 'object' as const,
-        description: 'フォーカスタグごとの個別コメント（50〜100文字）。選択されたタグに対してのみ返す。',
-        properties: {
-          health: { type: 'string' as const },
-          beauty: { type: 'string' as const },
-          career: { type: 'string' as const },
-          goals: { type: 'string' as const },
-          values: { type: 'string' as const },
-          relationships: { type: 'string' as const },
-          finance: { type: 'string' as const },
-          learning: { type: 'string' as const },
-          mindfulness: { type: 'string' as const },
-        },
+      required: ['joy', 'anger', 'sadness', 'anxiety', 'calm'],
+    },
+    subEmotions: {
+      type: 'object' as const,
+      description: 'サブ感情スコア（0.0〜1.0）- 検出された感情のみ。0.3以上のもののみ返す。35種から該当するもの',
+      properties: {
+        // 喜び系 (Joy family)
+        fulfillment: { type: 'number' as const }, gratitude: { type: 'number' as const },
+        pride: { type: 'number' as const }, relief: { type: 'number' as const },
+        love: { type: 'number' as const }, contentment: { type: 'number' as const },
+        // 期待系 (Anticipation)
+        hope: { type: 'number' as const }, curiosity: { type: 'number' as const },
+        determination: { type: 'number' as const },
+        // 悲しみ系 (Sadness)
+        loneliness: { type: 'number' as const }, nostalgia: { type: 'number' as const },
+        disappointment: { type: 'number' as const },
+        // 怒り系 (Anger)
+        frustration: { type: 'number' as const }, irritation: { type: 'number' as const },
+        envy: { type: 'number' as const },
+        // 不安系 (Anxiety)
+        overwhelm: { type: 'number' as const }, confusion: { type: 'number' as const },
+        guilt: { type: 'number' as const }, vulnerability: { type: 'number' as const },
+        // 不安系追加
+        restlessness: { type: 'number' as const },
+        // つながり系 (Connection)
+        empathy: { type: 'number' as const }, self_compassion: { type: 'number' as const },
+        awe: { type: 'number' as const },
+        // エネルギー系 (Energy)
+        playfulness: { type: 'number' as const }, serenity: { type: 'number' as const },
+        exhaustion: { type: 'number' as const }, liberation: { type: 'number' as const },
+        // 内省系 (Introspection)
+        acceptance: { type: 'number' as const }, regret: { type: 'number' as const },
+        boredom: { type: 'number' as const }, shame: { type: 'number' as const },
+        // 期待系追加
+        inspiration: { type: 'number' as const },
+        // 悲しみ系追加
+        melancholy: { type: 'number' as const },
+        // 怒り系追加
+        resistance: { type: 'number' as const },
       },
     },
-    required: ['emotions', 'themes', 'actions', 'aiComment'],
-  },
-};
+    themes: {
+      type: 'array' as const,
+      items: { type: 'string' as const },
+      description: `テーマタグ（以下のリストから2〜4つ選択）: ${THEME_TAXONOMY.join(', ')}`,
+    },
+    actions: {
+      type: 'array' as const,
+      items: { type: 'string' as const },
+      description: '記録された行動事実',
+    },
+    aiComment: {
+      type: 'string' as const,
+      description: '150〜250文字の温かいフィードバック。ユーザーの特性データは直接言及せず、その理解を「にじませる」こと。過去の流れとの変化や気づきに触れ、内省や自己肯定感を促す。',
+    },
+    coachingQuestion: {
+      type: 'string' as const,
+      description: 'ユーザーへの内省を促す問いかけ（1文）',
+    },
+    lifeReflectionQuestion: {
+      type: 'string' as const,
+      description: 'ユーザーの人生を見つめ直す深い問いかけ（1文）。目標・日記の傾向・記録期間に基づき、3年/1年/90日/30日/7日スケールでの振り返りや、人生の方向性・成長・ビジョンに関する質問。例：「過去12ヶ月で最も大きな学びは何でしたか？」「90日前と比べて、目標やビジョンはどのくらい明確になりましたか？」',
+    },
+  };
+
+  // focusInsights はフォーカスタグが選択されている場合にのみスキーマに追加
+  if (hasFocusTags && selectedTags && selectedTags.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const focusProps: Record<string, any> = {};
+    for (const tag of selectedTags) {
+      focusProps[tag] = { type: 'string' as const };
+    }
+    properties.focusInsights = {
+      type: 'object' as const,
+      description: 'フォーカスタグごとの個別コメント（50〜100文字）。選択されたタグに対してのみ返す。',
+      properties: focusProps,
+      required: selectedTags,
+    };
+  }
+
+  return {
+    name: 'submit_journal_analysis',
+    description: '日記エントリーの分析結果をJSON形式で返す',
+    input_schema: {
+      type: 'object' as const,
+      properties,
+      required: ['emotions', 'themes', 'actions', 'aiComment'],
+    },
+  };
+}
 
 const FOCUS_TAG_LABELS: Record<string, string> = {
   health: '健康', beauty: '美容', career: 'キャリア', goals: '目標',
@@ -276,6 +282,8 @@ export async function POST(request: NextRequest) {
       : '';
 
     const focusContext = buildFocusTagContext(focusTags, profile);
+    const hasFocusTags = !!(focusTags?.selectedTags?.length);
+    const journalAnalysisTool = buildJournalAnalysisTool(hasFocusTags, focusTags?.selectedTags);
 
     const prompt = `
       あなたは、ユーザーの人生を深く理解し、魂の成長を支援する「専属ライフ・パートナーAI」です。
@@ -352,6 +360,7 @@ export async function POST(request: NextRequest) {
 
       ${focusTags?.selectedTags?.length ? `
       ## フォーカスタグ対応ルール
+      **重要: focusInsightsはフォーカスタグが選択されている場合にのみ返すこと。**
       ユーザーが「${focusTags.selectedTags.map((t: string) => FOCUS_TAG_LABELS[t] || t).join('、')}」をフォーカスに選んでいます。
 
       1. **aiComment**: 全体的なコメントの中で、選択されたフォーカステーマに自然に触れる。複数選択されている場合はバランスよく言及する。
@@ -366,7 +375,10 @@ export async function POST(request: NextRequest) {
          - 学び: 知的好奇心への肯定と学びの応用への示唆。
          - マインドフルネス: 心の状態への共感と継続の価値の言語化。
       3. 構造化データが空でも、タグが選択されていればそのテーマに触れる。
-      ` : ''}
+      ` : `
+      ## フォーカスタグ未選択
+      今回はフォーカスタグが選択されていません。focusInsightsは返さないでください。aiCommentは150〜250文字に収めてください。
+      `}
 
       submit_journal_analysis ツールを使って結果を返してください。
     `;
@@ -374,7 +386,7 @@ export async function POST(request: NextRequest) {
     const result = await callWithRetry(async () => {
       return await getAnthropicClient().messages.create({
         model: MODEL,
-        max_tokens: 1500,
+        max_tokens: hasFocusTags ? 1500 : 1200,
         tools: [journalAnalysisTool],
         tool_choice: { type: 'tool', name: 'submit_journal_analysis' },
         messages: [{ role: 'user', content: prompt }],
@@ -417,6 +429,11 @@ export async function POST(request: NextRequest) {
     if (!parsed.emotions) parsed.emotions = { joy: 0, anger: 0, sadness: 0, anxiety: 0, calm: 0 };
     if (!parsed.themes) parsed.themes = ['記録'];
     if (!parsed.actions) parsed.actions = [];
+
+    // Safety: フォーカスタグ未選択時は focusInsights を除去（万が一AIが生成した場合）
+    if (!hasFocusTags && parsed.focusInsights) {
+      delete parsed.focusInsights;
+    }
 
     return NextResponse.json(parsed);
   } catch (error) {

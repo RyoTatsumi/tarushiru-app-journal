@@ -283,6 +283,43 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
     return result;
   }, [entries]);
 
+  // Focus Tag Trend Data: sleep hours, health status, skin condition, mindfulness mood etc.
+  const focusTagTrendData = useMemo(() => {
+    const entriesWithFocus = entries
+      .filter(e => e.focusTags?.selectedTags?.length)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (entriesWithFocus.length === 0) return null;
+
+    const data = entriesWithFocus.map(e => {
+      const d = new Date(e.date);
+      const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+      return {
+        date: dateLabel,
+        fullDate: e.date,
+        sleepHours: e.focusTags?.health?.sleepHours ?? null,
+        healthStatus: e.focusTags?.health?.healthStatus ?? null,
+        skinCondition: e.focusTags?.beauty?.skinCondition ?? null,
+        valuesAlignment: e.focusTags?.values?.alignment ?? null,
+        financialMood: e.focusTags?.finance?.financialMood ?? null,
+        mindfulnessMood: e.focusTags?.mindfulness?.mood ?? null,
+      };
+    });
+
+    // Check which metrics actually have data
+    const hasSleep = data.some(d => d.sleepHours !== null);
+    const hasHealth = data.some(d => d.healthStatus !== null);
+    const hasSkin = data.some(d => d.skinCondition !== null);
+    const hasValues = data.some(d => d.valuesAlignment !== null);
+    const hasFinance = data.some(d => d.financialMood !== null);
+    const hasMindfulness = data.some(d => d.mindfulnessMood !== null);
+
+    const hasAnyData = hasSleep || hasHealth || hasSkin || hasValues || hasFinance || hasMindfulness;
+    if (!hasAnyData) return null;
+
+    return { data, hasSleep, hasHealth, hasSkin, hasValues, hasFinance, hasMindfulness };
+  }, [entries]);
+
   const handleSubmit = async () => {
     if (!content.trim()) return;
 
@@ -1015,6 +1052,137 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
               </ResponsiveContainer>
             </div>
           </div>
+
+          {/* Focus Tag Trend Charts */}
+          {focusTagTrendData && (
+            <>
+              {/* Sleep & Health Chart */}
+              {(focusTagTrendData.hasSleep || focusTagTrendData.hasHealth) && (
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Activity size={16} className="text-green-500" />
+                    <h3 className="text-sm font-bold text-navy-900">健康トラッキング</h3>
+                  </div>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={focusTagTrendData.data}>
+                        <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                        <YAxis
+                          yAxisId="sleep"
+                          orientation="left"
+                          domain={[0, 12]}
+                          tick={{fontSize: 10}}
+                          tickLine={false}
+                          axisLine={false}
+                          label={{ value: '時間', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#22c55e' } }}
+                          hide={!focusTagTrendData.hasSleep}
+                        />
+                        <YAxis
+                          yAxisId="level"
+                          orientation="right"
+                          domain={[1, 5]}
+                          ticks={[1, 2, 3, 4, 5]}
+                          tick={{fontSize: 10}}
+                          tickLine={false}
+                          axisLine={false}
+                          label={{ value: 'レベル', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#3b82f6' } }}
+                          hide={!focusTagTrendData.hasHealth}
+                        />
+                        <Tooltip
+                          contentStyle={{backgroundColor: '#fff', fontSize: '12px', borderRadius: '8px'}}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any, name: any) => {
+                            if (name === '睡眠時間') return [`${value}時間`, name];
+                            if (name === '体調') return [`${value}/5`, name];
+                            return [value, name];
+                          }}
+                        />
+                        <Legend wrapperStyle={{fontSize: '11px'}}/>
+                        {focusTagTrendData.hasSleep && (
+                          <Line yAxisId="sleep" type="monotone" dataKey="sleepHours" stroke="#22c55e" strokeWidth={2.5} name="睡眠時間" dot={{ r: 3, fill: '#22c55e' }} connectNulls />
+                        )}
+                        {focusTagTrendData.hasHealth && (
+                          <Line yAxisId="level" type="monotone" dataKey="healthStatus" stroke="#3b82f6" strokeWidth={2} name="体調" dot={{ r: 3, fill: '#3b82f6' }} connectNulls strokeDasharray="5 3" />
+                        )}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {focusTagTrendData.hasSleep && (() => {
+                    const sleepValues = focusTagTrendData.data.filter(d => d.sleepHours !== null).map(d => d.sleepHours!);
+                    if (sleepValues.length < 2) return null;
+                    const avg = sleepValues.reduce((s, v) => s + v, 0) / sleepValues.length;
+                    const recent = sleepValues[sleepValues.length - 1];
+                    const trend = recent > avg ? '上昇傾向 ↑' : recent < avg ? '下降傾向 ↓' : '安定';
+                    return (
+                      <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+                        <span>平均: <strong className="text-navy-700">{avg.toFixed(1)}時間</strong></span>
+                        <span>直近: <strong className="text-navy-700">{recent}時間</strong></span>
+                        <span className={`font-medium ${recent > avg ? 'text-green-600' : recent < avg ? 'text-amber-600' : 'text-gray-500'}`}>{trend}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Beauty Chart */}
+              {focusTagTrendData.hasSkin && (
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Sparkles size={16} className="text-pink-400" />
+                    <h3 className="text-sm font-bold text-navy-900">美容トラッキング</h3>
+                  </div>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={focusTagTrendData.data}>
+                        <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                        <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{backgroundColor: '#fff', fontSize: '12px', borderRadius: '8px'}}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any) => [`${value}/5`, '肌の調子']}
+                        />
+                        <Legend wrapperStyle={{fontSize: '11px'}}/>
+                        <Line type="monotone" dataKey="skinCondition" stroke="#f472b6" strokeWidth={2.5} name="肌の調子" dot={{ r: 3, fill: '#f472b6' }} connectNulls />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Wellbeing Composite Chart (values, finance, mindfulness) */}
+              {(focusTagTrendData.hasValues || focusTagTrendData.hasFinance || focusTagTrendData.hasMindfulness) && (
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Heart size={16} className="text-teal-500" />
+                    <h3 className="text-sm font-bold text-navy-900">ウェルビーイング</h3>
+                  </div>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={focusTagTrendData.data}>
+                        <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                        <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{backgroundColor: '#fff', fontSize: '12px', borderRadius: '8px'}}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any, name: any) => [`${value}/5`, name]}
+                        />
+                        <Legend wrapperStyle={{fontSize: '11px'}}/>
+                        {focusTagTrendData.hasValues && (
+                          <Line type="monotone" dataKey="valuesAlignment" stroke="#8b5cf6" strokeWidth={2} name="価値観一致度" dot={{ r: 3, fill: '#8b5cf6' }} connectNulls />
+                        )}
+                        {focusTagTrendData.hasFinance && (
+                          <Line type="monotone" dataKey="financialMood" stroke="#10b981" strokeWidth={2} name="お金の安心度" dot={{ r: 3, fill: '#10b981' }} connectNulls />
+                        )}
+                        {focusTagTrendData.hasMindfulness && (
+                          <Line type="monotone" dataKey="mindfulnessMood" stroke="#14b8a6" strokeWidth={2} name="心の穏やかさ" dot={{ r: 3, fill: '#14b8a6' }} connectNulls />
+                        )}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
             <div className="flex justify-between items-center">
