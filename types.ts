@@ -159,10 +159,17 @@ export interface FixedCostItem {
   amount: number;
 }
 
+export interface VariableCostItem {
+  id: string;
+  name: string;
+  amount: number;
+}
+
 export interface BudgetProfile {
   monthlyIncome: number;
   fixedCosts: FixedCostItem[];
   variableBudget: number;
+  variableCosts?: VariableCostItem[];
 }
 
 export interface AssetGoal {

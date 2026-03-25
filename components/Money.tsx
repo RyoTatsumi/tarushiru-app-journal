@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem, UserProfile, AssetGoal } from '@/types';
+import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem, VariableCostItem, UserProfile, AssetGoal } from '@/types';
 import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
 import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase, Copy, ToggleLeft, ToggleRight, Edit2, Check } from 'lucide-react';
 import { analyzeAssetTrends } from '@/lib/aiService';
@@ -189,12 +189,73 @@ export const Money: React.FC<MoneyProps> = ({
       setEditFixedAmount('');
   };
 
-  const handleIncomeChange = (val: string) => {
-      onUpdateBudget({ ...budgetProfile, monthlyIncome: Number(val) });
+  // Variable cost item management
+  const [newVarCostName, setNewVarCostName] = useState('');
+  const [newVarCostAmount, setNewVarCostAmount] = useState('');
+  const [editingVarCostId, setEditingVarCostId] = useState<string | null>(null);
+  const [editVarName, setEditVarName] = useState('');
+  const [editVarAmount, setEditVarAmount] = useState('');
+
+  const variableCosts = budgetProfile.variableCosts || [];
+  const totalVariableCosts = variableCosts.reduce((sum, item) => sum + item.amount, 0);
+
+  const handleAddVariableCost = () => {
+      if (!newVarCostName || !newVarCostAmount) return;
+      const newItem: VariableCostItem = {
+          id: Date.now().toString(),
+          name: newVarCostName,
+          amount: Number(newVarCostAmount)
+      };
+      const updatedCosts = [...variableCosts, newItem];
+      onUpdateBudget({
+          ...budgetProfile,
+          variableCosts: updatedCosts,
+          variableBudget: updatedCosts.reduce((sum, item) => sum + item.amount, 0)
+      });
+      setNewVarCostName('');
+      setNewVarCostAmount('');
   };
 
-  const handleVariableBudgetChange = (val: string) => {
-      onUpdateBudget({ ...budgetProfile, variableBudget: Number(val) });
+  const handleDeleteVariableCost = (id: string) => {
+      const updatedCosts = variableCosts.filter(item => item.id !== id);
+      onUpdateBudget({
+          ...budgetProfile,
+          variableCosts: updatedCosts,
+          variableBudget: updatedCosts.reduce((sum, item) => sum + item.amount, 0)
+      });
+  };
+
+  const handleStartEditVarCost = (item: VariableCostItem) => {
+      setEditingVarCostId(item.id);
+      setEditVarName(item.name);
+      setEditVarAmount(String(item.amount));
+  };
+
+  const handleSaveEditVarCost = () => {
+      if (!editingVarCostId || !editVarName || !editVarAmount) return;
+      const updatedCosts = variableCosts.map(item =>
+          item.id === editingVarCostId
+              ? { ...item, name: editVarName, amount: Number(editVarAmount) }
+              : item
+      );
+      onUpdateBudget({
+          ...budgetProfile,
+          variableCosts: updatedCosts,
+          variableBudget: updatedCosts.reduce((sum, item) => sum + item.amount, 0)
+      });
+      setEditingVarCostId(null);
+      setEditVarName('');
+      setEditVarAmount('');
+  };
+
+  const handleCancelEditVarCost = () => {
+      setEditingVarCostId(null);
+      setEditVarName('');
+      setEditVarAmount('');
+  };
+
+  const handleIncomeChange = (val: string) => {
+      onUpdateBudget({ ...budgetProfile, monthlyIncome: Number(val) });
   };
 
   // M7: Save asset goal
@@ -270,7 +331,7 @@ export const Money: React.FC<MoneyProps> = ({
 
   // Flow Chart Data
   const totalFixedCosts = budgetProfile.fixedCosts.reduce((sum, item) => sum + item.amount, 0);
-  const totalExpenses = totalFixedCosts + budgetProfile.variableBudget;
+  const totalExpenses = totalFixedCosts + totalVariableCosts;
   const surplus = budgetProfile.monthlyIncome - totalExpenses;
 
   // M6: Savings rate calculation
@@ -699,24 +760,84 @@ export const Money: React.FC<MoneyProps> = ({
               </div>
           </div>
 
-          {/* Variable Budget */}
+          {/* Variable Budget - Itemized */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="text-sm font-bold text-navy-900 mb-4 flex items-center">
-                  <Wallet size={16} className="mr-1"/>
-                  変動費 (毎月の予算枠)
-              </h3>
-              <div className="space-y-1">
-                  <label className="text-xs text-gray-500 ml-1">食費・交際費などの想定合計</label>
-                  <div className="relative">
-                      <span className="absolute left-3 top-3 text-gray-400 text-sm">¥</span>
-                      <input
-                          type="number"
-                          value={budgetProfile.variableBudget || ''}
-                          onChange={(e) => handleVariableBudgetChange(e.target.value)}
-                          placeholder="0"
-                          className="w-full p-3 pl-7 bg-navy-50 rounded-xl text-lg font-bold text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-500"
-                      />
-                  </div>
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-navy-900 flex items-center">
+                      <Wallet size={16} className="mr-1"/>
+                      変動費 (毎月の目安)
+                  </h3>
+                  <span className="text-xs font-bold text-navy-900">計 {formatAmount(totalVariableCosts)}</span>
+              </div>
+
+              <div className="space-y-2 mb-4">
+                  {variableCosts.map(item => (
+                      <div key={item.id} className="flex justify-between items-center bg-navy-50 p-2.5 rounded-lg">
+                          {editingVarCostId === item.id ? (
+                              <div className="flex items-center space-x-2 w-full">
+                                  <input
+                                      value={editVarName}
+                                      onChange={(e) => setEditVarName(e.target.value)}
+                                      className="flex-[2] p-1.5 text-sm rounded border border-gray-300 bg-white"
+                                  />
+                                  <div className="relative flex-1">
+                                      <span className="absolute left-2 top-2 text-gray-400 text-xs">¥</span>
+                                      <input
+                                          type="number"
+                                          value={editVarAmount}
+                                          onChange={(e) => setEditVarAmount(e.target.value)}
+                                          className="w-full p-1.5 pl-5 text-sm rounded border border-gray-300 bg-white"
+                                      />
+                                  </div>
+                                  <button onClick={handleSaveEditVarCost} className="text-green-600 hover:text-green-800">
+                                      <Check size={16} />
+                                  </button>
+                                  <button onClick={handleCancelEditVarCost} className="text-gray-400 hover:text-gray-600 text-xs font-medium">
+                                      ×
+                                  </button>
+                              </div>
+                          ) : (
+                              <>
+                                  <span className="text-sm text-navy-800 font-medium">{item.name}</span>
+                                  <div className="flex items-center space-x-3">
+                                      <span className="text-sm text-navy-900">{formatAmount(item.amount)}</span>
+                                      <button onClick={() => handleStartEditVarCost(item)} className="text-gray-400 hover:text-navy-700">
+                                          <Edit2 size={14} />
+                                      </button>
+                                      <button onClick={() => handleDeleteVariableCost(item.id)} className="text-gray-400 hover:text-red-500">
+                                          <Trash2 size={14} />
+                                      </button>
+                                  </div>
+                              </>
+                          )}
+                      </div>
+                  ))}
+                  {variableCosts.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-2">変動費の項目を追加してください</p>
+                  )}
+              </div>
+
+              {/* Add New Variable Cost */}
+              <div className="flex space-x-2 border-t border-gray-100 pt-3">
+                  <input
+                      className="flex-[2] p-2 bg-gray-50 rounded-lg text-xs border border-gray-200"
+                      placeholder="項目名 (例: 食費)"
+                      value={newVarCostName}
+                      onChange={e => setNewVarCostName(e.target.value)}
+                  />
+                  <input
+                      type="number"
+                      className="flex-1 p-2 bg-gray-50 rounded-lg text-xs border border-gray-200"
+                      placeholder="金額"
+                      value={newVarCostAmount}
+                      onChange={e => setNewVarCostAmount(e.target.value)}
+                  />
+                  <button
+                      onClick={handleAddVariableCost}
+                      className="bg-navy-900 text-white px-3 rounded-lg flex items-center justify-center"
+                  >
+                      <Plus size={16} />
+                  </button>
               </div>
           </div>
 
