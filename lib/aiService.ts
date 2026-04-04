@@ -61,8 +61,8 @@ export const analyzeGeneticType = async (rawText: string) => {
   return callApi('analyze-genetic', { rawText });
 };
 
-export const analyzeAssetTrends = async (assets: unknown[], budget: unknown, profile?: UserProfile | null) => {
-  const data = await callApi('analyze-assets', { assets, budget, profile });
+export const analyzeAssetTrends = async (assets: unknown[], budget: unknown, profile?: UserProfile | null, goals?: unknown[], allocation?: unknown, simulation?: unknown) => {
+  const data = await callApi('analyze-assets', { assets, budget, profile, goals, allocation, simulation });
   return data.result;
 };
 

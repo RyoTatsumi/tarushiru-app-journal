@@ -1,13 +1,31 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem, VariableCostItem, UserProfile, AssetGoal } from '@/types';
-import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
-import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase, Copy, ToggleLeft, ToggleRight, Edit2, Check } from 'lucide-react';
+import { AssetRecord, MoneyConfig, BudgetProfile, FixedCostItem, VariableCostItem, UserProfile, AssetGoal, Goal } from '@/types';
+import { ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ReferenceLine, Cell, PieChart, Pie, LineChart, Line } from 'recharts';
+import { Plus, DollarSign, Settings, Trash2, TrendingUp, Sparkles, Loader2, ArrowRight, Wallet, PiggyBank, Briefcase, Copy, ToggleLeft, ToggleRight, Edit2, Check, Zap } from 'lucide-react';
 import { analyzeAssetTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
 
 const CATEGORY_COLORS = ['#102a43', '#334e68', '#486581', '#627d98', '#829ab1', '#9fb3c8', '#bcccdc', '#d9e2ec'];
+const PIE_COLORS = ['#102a43', '#334e68', '#486581', '#627d98', '#829ab1', '#f59e0b', '#10b981', '#ef4444'];
+
+// Asset category presets
+const ASSET_PRESETS = [
+  '現金・預金', '株式（国内）', '株式（海外）', '投資信託', '債券',
+  '仮想通貨', '不動産', '保険（貯蓄型）', '年金・iDeCo', 'その他',
+];
+
+// Die with Zero hints based on life stage
+const DWZ_HINTS = [
+  '今のあなたの1時間は、10年後の1時間より価値がある。健康な体で使えるお金は今が最高値。',
+  '「いつか」のための貯金も大切。でも「今しかできない経験」に投資する勇気も資産形成の一部。',
+  '体力と好奇心がある今、旅・学び・挑戦に使うお金のリターンは、株式の利回りより大きいかもしれない。',
+  '若さは減価償却が最も速い資産。体験への投資は早いほどリターンが大きい。',
+  '「老後のため」と「今を生きるため」のバランス。両方を意識できている時点で、あなたは賢い。',
+  '最高の投資先は、自分の健康とスキル。これらは複利で効く唯一の資産。',
+  '人生のどのステージでも「今」が一番若い。今日使った経験代は、明日の自分を豊かにする。',
+];
 
 interface MoneyProps {
   assets: AssetRecord[];
@@ -17,6 +35,7 @@ interface MoneyProps {
   budgetProfile: BudgetProfile;
   onUpdateBudget: (budget: BudgetProfile) => void;
   profile?: UserProfile | null;
+  goals?: Goal[];
 }
 
 type TabMode = 'stock' | 'flow';
@@ -28,7 +47,8 @@ export const Money: React.FC<MoneyProps> = ({
     onUpdateConfig,
     budgetProfile,
     onUpdateBudget,
-    profile
+    profile,
+    goals
 }) => {
   const { showToast, showConfirm } = useToast();
   const [activeTab, setActiveTab] = useState<TabMode>('stock');
@@ -50,6 +70,13 @@ export const Money: React.FC<MoneyProps> = ({
   const [goalTargetAmount, setGoalTargetAmount] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState('');
   const [goalLabel, setGoalLabel] = useState('');
+
+  // Simulation state
+  const [simYears, setSimYears] = useState(10);
+  const [simReturnRate, setSimReturnRate] = useState(5);
+
+  // Die with Zero hint (stable per session)
+  const [dwzHint] = useState(() => DWZ_HINTS[Math.floor(Math.random() * DWZ_HINTS.length)]);
 
   // M2: Format amount helper
   const formatAmount = (val: number) => moneyConfig.displayInManYen ? `${(val / 10000).toFixed(1)}万円` : `¥${val.toLocaleString()}`;
@@ -96,6 +123,16 @@ export const Money: React.FC<MoneyProps> = ({
       const otherRecords = assets.filter(r => r.month !== selectedMonth);
       onUpdateAssets([...otherRecords, { month: selectedMonth, values: { ...source.values } }]);
       showToast('前月のデータをコピーしました');
+  };
+
+  // Add preset category
+  const handleAddPreset = (preset: string) => {
+      if (!moneyConfig.assetCategories.includes(preset)) {
+          onUpdateConfig({
+              ...moneyConfig,
+              assetCategories: [...moneyConfig.assetCategories, preset]
+          });
+      }
   };
 
   const handleAssetValueChange = (cat: string, valueStr: string) => {
@@ -286,13 +323,13 @@ export const Money: React.FC<MoneyProps> = ({
       });
   };
 
-  // --- Analysis ---
+  // --- Analysis (enhanced with goals + allocation) ---
   const handleAnalyze = async () => {
       setIsAnalyzing(true);
       try {
-          const result = await analyzeAssetTrends(assets, budgetProfile, profile);
+          const result = await analyzeAssetTrends(assets, budgetProfile, profile, goals, allocationData, simulationData);
           setAnalysisResult(result);
-      } catch (e) {
+      } catch {
           showToast('分析に失敗しました', 'error');
       } finally {
           setIsAnalyzing(false);
@@ -329,6 +366,38 @@ export const Money: React.FC<MoneyProps> = ({
       });
   }, [assets, moneyConfig.assetCategories]);
 
+  // Asset Allocation Pie Data
+  const allocationData = useMemo(() => {
+      if (totalAssets === 0) return [];
+      return assetChartData.map((d, i) => ({
+          name: d.name,
+          value: d.value,
+          pct: ((d.value / totalAssets) * 100).toFixed(1),
+          fill: PIE_COLORS[i % PIE_COLORS.length],
+      }));
+  }, [assetChartData, totalAssets]);
+
+  // Future Simulation Data
+  const simulationData = useMemo(() => {
+      const monthlyInvestment = Math.max(0, budgetProfile.monthlyIncome - (budgetProfile.fixedCosts.reduce((s, i) => s + i.amount, 0) + (budgetProfile.variableCosts || []).reduce((s, i) => s + i.amount, 0)));
+      const annualInvestment = monthlyInvestment * 12;
+      const rate = simReturnRate / 100;
+      const data: { year: string; assets: number; invested: number }[] = [];
+      let cumAssets = totalAssets;
+      let cumInvested = totalAssets;
+
+      for (let y = 0; y <= simYears; y++) {
+          data.push({
+              year: y === 0 ? '現在' : `${y}年後`,
+              assets: Math.round(cumAssets),
+              invested: Math.round(cumInvested),
+          });
+          cumAssets = cumAssets * (1 + rate) + annualInvestment;
+          cumInvested += annualInvestment;
+      }
+      return { data, monthlyInvestment, finalAssets: Math.round(data[data.length - 1]?.assets || 0) };
+  }, [totalAssets, budgetProfile, simYears, simReturnRate]);
+
   // Flow Chart Data
   const totalFixedCosts = budgetProfile.fixedCosts.reduce((sum, item) => sum + item.amount, 0);
   const totalExpenses = totalFixedCosts + totalVariableCosts;
@@ -359,6 +428,20 @@ export const Money: React.FC<MoneyProps> = ({
       }
       return `残り${diffDays}日`;
   }, [assetGoal]);
+
+  // Goal achievement estimate
+  const goalEstimate = useMemo(() => {
+      if (!assetGoal || totalAssets >= assetGoal.targetAmount) return null;
+      const monthlySurplus = Math.max(0, budgetProfile.monthlyIncome - (budgetProfile.fixedCosts.reduce((s, i) => s + i.amount, 0) + (budgetProfile.variableCosts || []).reduce((s, i) => s + i.amount, 0)));
+      if (monthlySurplus <= 0) return null;
+      const remaining = assetGoal.targetAmount - totalAssets;
+      const rate = simReturnRate / 100 / 12;
+      if (rate > 0) {
+          const months = Math.log((remaining * rate / monthlySurplus) + 1) / Math.log(1 + rate);
+          return Math.ceil(months);
+      }
+      return Math.ceil(remaining / monthlySurplus);
+  }, [assetGoal, totalAssets, budgetProfile, simReturnRate]);
 
   const flowData = [
       { name: '収入', amount: budgetProfile.monthlyIncome, fill: '#334e68' },
@@ -559,18 +642,34 @@ export const Money: React.FC<MoneyProps> = ({
             </div>
 
             {isConfigMode && (
-                <div className="mb-4 p-3 bg-navy-50 rounded-lg space-y-2 border border-navy-100">
+                <div className="mb-4 p-3 bg-navy-50 rounded-lg space-y-3 border border-navy-100">
                     <p className="text-xs font-bold text-navy-900">項目の追加・削除</p>
+                    {/* Preset categories */}
+                    <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">プリセットから追加:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {ASSET_PRESETS.filter(p => !moneyConfig.assetCategories.includes(p)).map(preset => (
+                                <button
+                                    key={preset}
+                                    onClick={() => handleAddPreset(preset)}
+                                    className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded-full hover:bg-navy-900 hover:text-white hover:border-navy-900 transition-colors"
+                                >
+                                    + {preset}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {/* Custom category */}
                     <div className="flex space-x-2">
                         <input
                             value={newCategoryName}
                             onChange={(e) => setNewCategoryName(e.target.value)}
-                            placeholder="新項目名（例：仮想通貨）"
+                            placeholder="カスタム項目名"
                             className="flex-1 p-2 text-xs rounded border border-gray-200"
                         />
                         <button onClick={handleAddCategory} className="bg-navy-900 text-white px-3 py-1 rounded text-xs">追加</button>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
+                    <div className="flex flex-wrap gap-2">
                         {moneyConfig.assetCategories.map(cat => (
                             <span key={cat} className="inline-flex items-center text-[10px] bg-white border border-gray-200 px-2 py-1 rounded-full">
                                 {cat}
@@ -653,6 +752,154 @@ export const Money: React.FC<MoneyProps> = ({
                     )}
                 </AreaChart>
             </ResponsiveContainer>
+        </div>
+
+        {/* Asset Allocation Pie Chart */}
+        {allocationData.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-sm font-bold text-navy-900 mb-3">資産配分バランス</h3>
+                <div className="flex items-center">
+                    <div className="w-1/2 h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={allocationData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={40}
+                                    outerRadius={70}
+                                    paddingAngle={2}
+                                >
+                                    {allocationData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Pie>
+                                <Tooltip
+                                    contentStyle={{fontSize: '11px', borderRadius: '8px'}}
+                                    formatter={(value: number | undefined) => [formatAmount(value ?? 0)]}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="w-1/2 space-y-1.5">
+                        {allocationData.map((d, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs">
+                                <div className="flex items-center space-x-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.fill }} />
+                                    <span className="text-gray-700 truncate max-w-[80px]">{d.name}</span>
+                                </div>
+                                <span className="font-bold text-navy-900">{d.pct}%</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Future Simulation */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-sm font-bold text-navy-900 mb-3 flex items-center">
+                <TrendingUp size={16} className="mr-1"/>
+                未来シミュレーション
+            </h3>
+            <div className="flex space-x-3 mb-4">
+                <div className="flex-1">
+                    <label className="text-[10px] text-gray-500 block mb-1">期間</label>
+                    <div className="flex space-x-1">
+                        {[5, 10, 20, 30].map(y => (
+                            <button
+                                key={y}
+                                onClick={() => setSimYears(y)}
+                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                    simYears === y ? 'bg-navy-900 text-white' : 'bg-navy-50 text-gray-500'
+                                }`}
+                            >
+                                {y}年
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex-1">
+                    <label className="text-[10px] text-gray-500 block mb-1">想定利回り</label>
+                    <div className="flex space-x-1">
+                        {[3, 5, 7].map(r => (
+                            <button
+                                key={r}
+                                onClick={() => setSimReturnRate(r)}
+                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                    simReturnRate === r ? 'bg-navy-900 text-white' : 'bg-navy-50 text-gray-500'
+                                }`}
+                            >
+                                {r}%
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={simulationData.data}>
+                        <defs>
+                            <linearGradient id="simGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0.05}/>
+                            </linearGradient>
+                        </defs>
+                        <XAxis dataKey="year" tick={{fontSize: 9}} tickLine={false} axisLine={false} />
+                        <YAxis
+                            tick={{fontSize: 9}}
+                            tickFormatter={(v: number) => `${(v / 10000).toFixed(0)}万`}
+                            axisLine={false} tickLine={false}
+                        />
+                        <Tooltip
+                            contentStyle={{fontSize: '11px', borderRadius: '8px'}}
+                            formatter={(value: number | undefined) => [formatAmount(value ?? 0)]}
+                        />
+                        <Legend wrapperStyle={{fontSize: '10px'}} />
+                        <Area type="monotone" dataKey="assets" stroke="#10b981" strokeWidth={2} fill="url(#simGrad)" name="運用あり" />
+                        <Area type="monotone" dataKey="invested" stroke="#9ca3af" strokeWidth={1.5} fill="none" strokeDasharray="5 3" name="元本のみ" />
+                        {assetGoal && (
+                            <ReferenceLine y={assetGoal.targetAmount} stroke="#ef4444" strokeDasharray="5 5"
+                                label={{ value: '目標', fontSize: 10, fill: '#ef4444', position: 'right' }} />
+                        )}
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
+
+            <div className="mt-3 space-y-2">
+                <div className="flex justify-between items-center text-xs bg-green-50 p-3 rounded-lg border border-green-100">
+                    <span className="text-gray-600">毎月の投資可能額</span>
+                    <span className="font-bold text-green-700">{formatAmount(simulationData.monthlyInvestment)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs bg-navy-50 p-3 rounded-lg border border-navy-100">
+                    <span className="text-gray-600">{simYears}年後の予測資産（利回り{simReturnRate}%）</span>
+                    <span className="font-bold text-navy-900">{formatAmount(simulationData.finalAssets)}</span>
+                </div>
+                {goalEstimate && goalEstimate > 0 && assetGoal && (
+                    <div className="flex justify-between items-center text-xs bg-amber-50 p-3 rounded-lg border border-amber-100">
+                        <span className="text-gray-600">目標達成予測</span>
+                        <span className="font-bold text-amber-700">
+                            約{goalEstimate > 12 ? `${Math.floor(goalEstimate / 12)}年${goalEstimate % 12}ヶ月` : `${goalEstimate}ヶ月`}
+                        </span>
+                    </div>
+                )}
+            </div>
+        </div>
+
+        {/* Die with Zero Hint */}
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border border-amber-200/50">
+            <div className="flex items-start space-x-3">
+                <div className="bg-amber-100 p-1.5 rounded-lg mt-0.5">
+                    <Zap size={14} className="text-amber-600" />
+                </div>
+                <div>
+                    <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">Die with Zero — 今を生きるヒント</p>
+                    <p className="text-xs text-amber-900 leading-relaxed">{dwzHint}</p>
+                </div>
+            </div>
         </div>
       </div>
       ) : (

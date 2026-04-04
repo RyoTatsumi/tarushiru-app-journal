@@ -274,6 +274,7 @@ function AppShellInner() {
               budgetProfile={data.budgetProfile}
               onUpdateBudget={(b) => setData(p => ({...p, budgetProfile: b}))}
               profile={data.user}
+              goals={data.goals}
             />
           )}
           {view === ViewState.GOALS && (
