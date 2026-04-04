@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { JournalEntry, UserProfile, Goal, AIMemory, FocusTag, FocusTagData } from '@/types';
 import { analyzeJournalEntry, analyzeJournalTrends } from '@/lib/aiService';
 import { useToast } from '@/components/Toast';
-import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw, Compass, Activity, Briefcase, Target, Users, BookOpen, DollarSign } from 'lucide-react';
+import { Loader2, Sparkles, Calendar, Tag, BarChart2, List, Edit2, Check, X as XIcon, Quote, Clock, Trash2, Bookmark, BookmarkCheck, MessageCircle, Lightbulb, Search, Sun, Moon, Heart, Filter, RefreshCw, Compass, Activity, Briefcase, Target, Users, BookOpen, DollarSign, Download } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface JournalProps {
@@ -465,6 +465,149 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
 
     setIsReanalyzing(false);
     showToast(`${toReanalyze.length}件の日記を再分析しました`, 'success');
+  };
+
+  // Export all journal data as text file
+  const handleExportAllData = () => {
+    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    const focusTagLabels: Record<string, string> = {
+      health: '健康', beauty: '美容', career: 'キャリア', goals: '目標',
+      values: '価値観', relationships: '人間関係', finance: 'お金',
+      learning: '学び', mindfulness: 'マインドフルネス',
+    };
+
+    const lines: string[] = [
+      '====================================',
+      'TARUSHIRU JOURNAL — 人生の記録',
+      '====================================',
+      `エクスポート日時: ${new Date().toLocaleString('ja-JP')}`,
+      `総エントリー数: ${sorted.length}件`,
+      '',
+    ];
+
+    // Profile summary if available
+    if (profile) {
+      lines.push('--- プロフィール ---');
+      if (profile.name) lines.push(`名前: ${profile.name}`);
+      if (profile.mbti) lines.push(`MBTI: ${profile.mbti}`);
+      if (profile.strengths?.length) lines.push(`強み: ${profile.strengths.join(', ')}`);
+      if (profile.values) lines.push(`価値観: ${profile.values}`);
+      if (profile.lifePhilosophy) lines.push(`人生哲学: ${profile.lifePhilosophy}`);
+      lines.push('');
+    }
+
+    // Goals
+    if (goals.length > 0) {
+      lines.push('--- 目標 ---');
+      for (const g of goals) {
+        lines.push(`[${g.category}] ${g.title} (${g.progress}%)${g.description ? ` — ${g.description}` : ''}`);
+      }
+      lines.push('');
+    }
+
+    lines.push('====================================');
+    lines.push('日記エントリー');
+    lines.push('====================================');
+    lines.push('');
+
+    for (const entry of sorted) {
+      const d = new Date(entry.date);
+      const dateStr = d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+      lines.push(`■ ${dateStr}`);
+      lines.push('------------------------------------');
+      lines.push(entry.content);
+
+      // Focus tags
+      if (entry.focusTags?.selectedTags?.length) {
+        lines.push('');
+        lines.push(`フォーカス: ${entry.focusTags.selectedTags.map(t => focusTagLabels[t] || t).join(', ')}`);
+        // Structured data
+        const ft = entry.focusTags;
+        if (ft.health) {
+          const parts: string[] = [];
+          if (ft.health.sleepHours !== undefined) parts.push(`睡眠${ft.health.sleepHours}時間`);
+          if (ft.health.healthStatus) parts.push(`体調${ft.health.healthStatus}/5`);
+          if (ft.health.exercise) parts.push(`運動: ${ft.health.exercise}`);
+          if (parts.length) lines.push(`  健康: ${parts.join(' / ')}`);
+        }
+        if (ft.beauty) {
+          const parts: string[] = [];
+          if (ft.beauty.skinCondition) parts.push(`肌${ft.beauty.skinCondition}/5`);
+          if (ft.beauty.beautyRoutine) parts.push(`ケア: ${ft.beauty.beautyRoutine}`);
+          if (ft.beauty.concerns) parts.push(`気になる点: ${ft.beauty.concerns}`);
+          if (parts.length) lines.push(`  美容: ${parts.join(' / ')}`);
+        }
+        if (ft.career) {
+          if (ft.career.achievements) lines.push(`  キャリア成果: ${ft.career.achievements}`);
+          if (ft.career.challenges) lines.push(`  キャリア課題: ${ft.career.challenges}`);
+          if (ft.career.learnings) lines.push(`  キャリア学び: ${ft.career.learnings}`);
+        }
+      }
+
+      // Analysis
+      if (entry.analysis) {
+        lines.push('');
+        if (entry.analysis.themes?.length) {
+          lines.push(`テーマ: ${entry.analysis.themes.join(', ')}`);
+        }
+        if (entry.analysis.emotions) {
+          const emo = entry.analysis.emotions;
+          const top = Object.entries(emo)
+            .filter(([, v]) => (v as number) > 0.2)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .map(([k, v]) => `${EMOTION_LABELS[k] || k}(${((v as number) * 10).toFixed(0)})`)
+            .join(', ');
+          if (top) lines.push(`感情: ${top}`);
+        }
+        if (entry.analysis.subEmotions) {
+          const sub = Object.entries(entry.analysis.subEmotions)
+            .filter(([, v]) => (v as number) >= 0.3)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .map(([k, v]) => `${SUB_EMOTION_LABELS[k] || k}(${((v as number) * 10).toFixed(0)})`)
+            .join(', ');
+          if (sub) lines.push(`サブ感情: ${sub}`);
+        }
+        if (entry.analysis.actions?.length) {
+          lines.push(`行動: ${entry.analysis.actions.join(', ')}`);
+        }
+      }
+
+      // AI Comment
+      if (entry.aiComment) {
+        lines.push('');
+        lines.push(`💬 AIコメント: ${entry.aiComment}`);
+      }
+      if (entry.analysis?.coachingQuestion) {
+        lines.push(`❓ 問いかけ: ${entry.analysis.coachingQuestion}`);
+      }
+      if (entry.analysis?.lifeReflectionQuestion) {
+        lines.push(`🌟 人生の問い: ${entry.analysis.lifeReflectionQuestion}`);
+      }
+
+      // Focus insights
+      if (entry.analysis?.focusInsights) {
+        for (const [tagId, insight] of Object.entries(entry.analysis.focusInsights)) {
+          if (insight) lines.push(`  [${focusTagLabels[tagId] || tagId}] ${insight}`);
+        }
+      }
+
+      lines.push('');
+      lines.push('');
+    }
+
+    lines.push('====================================');
+    lines.push('— TARUSHIRU Journal Export End —');
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tarushiru_journal_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`${sorted.length}件の日記をエクスポートしました`, 'success');
   };
 
   // Get current template placeholder
@@ -1222,6 +1365,26 @@ export const Journal: React.FC<JournalProps> = ({ entries, onAddEntry, onUpdateE
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Export All Data */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <Download size={16} className="text-navy-600" />
+              <h3 className="text-sm font-bold text-navy-900">日記データのエクスポート</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              全{entries.length}件の日記・感情分析・AIコメント・プロフィール・目標をテキストファイルとして書き出します。
+              AIで人生ストーリーの作成や深い分析に活用できます。
+            </p>
+            <button
+              onClick={handleExportAllData}
+              disabled={entries.length === 0}
+              className="w-full bg-navy-900 text-white py-3 rounded-xl font-bold hover:bg-navy-800 transition-all flex items-center justify-center space-x-2 disabled:opacity-40"
+            >
+              <Download size={18} />
+              <span>全データをテキストで書き出す</span>
+            </button>
           </div>
 
           {/* Re-analysis of past entries */}
