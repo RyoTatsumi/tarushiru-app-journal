@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, UserPlus, LogIn, Loader2 } from 'lucide-react';
+import { Mail, UserPlus, LogIn, Loader2, Share2, Check } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -13,6 +13,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +119,28 @@ export const Auth: React.FC<AuthProps> = ({ onLogin, hasExistingAccount, error }
           </form>
         </div>
 
-        <p className="text-center text-xs text-navy-400 mt-8 opacity-60">
+        {/* App Share Button */}
+        <div className="text-center mt-6">
+          <button
+            onClick={() => {
+              const url = window.location.origin + window.location.pathname;
+              navigator.clipboard.writeText(url).then(() => {
+                setShareCopied(true);
+                setTimeout(() => setShareCopied(false), 2000);
+              });
+            }}
+            className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-medium transition-all ${
+              shareCopied
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                : 'bg-navy-800/50 text-navy-300 border border-navy-700/50 hover:bg-navy-700/50 hover:text-white'
+            }`}
+          >
+            {shareCopied ? <Check size={14} /> : <Share2 size={14} />}
+            <span>{shareCopied ? 'コピーしました！' : 'アプリをシェアする'}</span>
+          </button>
+        </div>
+
+        <p className="text-center text-xs text-navy-400 mt-4 opacity-60">
           データはお使いのブラウザ内にのみ保存されます。<br/>
           （サーバーには送信されません）
         </p>

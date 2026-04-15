@@ -815,8 +815,27 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           <span>{showSaveSuccess ? '保存完了' : 'プロフィールを保存'}</span>
       </button>
 
+      {/* App Share */}
+      <div className="bg-gradient-to-r from-navy-50 to-indigo-50 p-5 rounded-2xl border border-navy-100 space-y-3 mt-8">
+          <h3 className="text-sm font-bold text-navy-900 flex items-center"><Share2 size={16} className="mr-2"/>アプリをシェア</h3>
+          <p className="text-[10px] text-gray-500 leading-relaxed">
+              TARUSHIRUを友人や知人に紹介しましょう。
+          </p>
+          <button
+            onClick={() => {
+              const url = window.location.origin + window.location.pathname;
+              navigator.clipboard.writeText(url).then(() => {
+                showToast('アプリURLをコピーしました', 'success');
+              });
+            }}
+            className="w-full bg-navy-900 text-white py-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-md hover:bg-navy-800 active:scale-95 transition-all"
+          >
+            <Copy size={14} /><span>アプリURLをコピー</span>
+          </button>
+      </div>
+
       {/* Data Management Section (Backup) */}
-      <div className="bg-navy-50 p-5 rounded-2xl border border-navy-100 space-y-4 mt-8">
+      <div className="bg-navy-50 p-5 rounded-2xl border border-navy-100 space-y-4">
           <h3 className="text-sm font-bold text-navy-900 flex items-center"><Database size={16} className="mr-2"/>データバックアップ</h3>
           <p className="text-[10px] text-gray-500 leading-relaxed">
               機種変更時などは、現在のデータを書き出して保存し、新しいデバイスで読み込んでください。
