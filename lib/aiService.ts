@@ -71,6 +71,10 @@ export const getGoalCoaching = async (goals: Goal[], profile?: UserProfile | nul
   return data.result;
 };
 
+export const autoParseProfile = async (rawText: string) => {
+  return callApi('auto-profile', { rawText });
+};
+
 export const generateMonthlyReport = async (
   entries: JournalEntry[],
   profile: UserProfile | null,

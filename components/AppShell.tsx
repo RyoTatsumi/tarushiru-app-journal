@@ -292,6 +292,8 @@ function AppShellInner() {
               onResetData={() => {localStorage.removeItem('tarushiru_data'); window.location.reload();}}
               onPreviewPublic={handlePreviewSelf}
               onImportData={handleImportData}
+              goals={data.goals}
+              onUpdateGoals={(g) => setData(prev => ({...prev, goals: g}))}
             />
           )}
         </main>

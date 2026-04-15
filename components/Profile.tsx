@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
-import { UserProfile, GeneticAnalysis, AppData, CareerEntry } from '@/types';
-import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility } from '@/lib/aiService';
+import { UserProfile, GeneticAnalysis, AppData, CareerEntry, Goal } from '@/types';
+import { generateResume, analyzePersonality, summarizeCareerProfile, analyzeGeneticType, analyzeCompatibility, autoParseProfile } from '@/lib/aiService';
 import { User, FileText, Loader2, Save, Trash2, Sparkles, Trophy, Check, Download, Upload, RefreshCw, Briefcase, Heart, Users, Zap, Share2, ImageIcon, X, Dna, Activity, Moon, Link as LinkIcon, ExternalLink, Copy, Target, Smile, Eye, Award, History, Database, Edit2 } from 'lucide-react';
 
 interface ProfileProps {
@@ -12,7 +12,9 @@ interface ProfileProps {
   onUpdateProfile: (profile: UserProfile) => void;
   onResetData: () => void;
   onPreviewPublic: () => void;
-  onImportData: (data: AppData) => void; // 追加
+  onImportData: (data: AppData) => void;
+  goals?: Goal[];
+  onUpdateGoals?: (goals: Goal[]) => void;
 }
 
 const MBTI_TYPES = [
@@ -27,7 +29,7 @@ const STRENGTHS_THEMES = [
   "包含", "ポジティブ", "未来志向", "目標志向"
 ].sort();
 
-export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onResetData, onPreviewPublic, onImportData }) => {
+export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onResetData, onPreviewPublic, onImportData, goals, onUpdateGoals }) => {
   const { showToast, showConfirm } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState<UserProfile>({
@@ -49,6 +51,13 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
   const [showShareModal, setShowShareModal] = useState(false);
   const [partnerLink, setPartnerLink] = useState('');
   const [compatibilityResult, setCompatibilityResult] = useState<string | null>(null);
+
+  // Auto-import state
+  const [showAutoImport, setShowAutoImport] = useState(false);
+  const [autoImportText, setAutoImportText] = useState('');
+  const [isAutoImporting, setIsAutoImporting] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [autoImportResult, setAutoImportResult] = useState<any>(null);
 
   // Career entry state
   const [isAddingCareer, setIsAddingCareer] = useState(false);
@@ -233,6 +242,74 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
       }
   };
 
+  // Auto-import: parse text and fill profile
+  const handleAutoImport = async () => {
+      if (!autoImportText.trim()) return;
+      setIsAutoImporting(true);
+      setAutoImportResult(null);
+      try {
+          const result = await autoParseProfile(autoImportText);
+          setAutoImportResult(result);
+      } catch {
+          showToast('自動解析に失敗しました', 'error');
+      } finally {
+          setIsAutoImporting(false);
+      }
+  };
+
+  // Apply auto-imported data to profile and goals
+  const handleApplyAutoImport = () => {
+      if (!autoImportResult) return;
+      const r = autoImportResult;
+
+      // Update profile fields (only non-empty values)
+      setFormData(prev => ({
+          ...prev,
+          mbti: r.mbti || prev.mbti,
+          strengths: r.strengths?.length ? r.strengths : prev.strengths,
+          careerStrengths: r.careerStrengths || prev.careerStrengths,
+          interests: r.interests || prev.interests,
+          values: r.values || prev.values,
+          lifePhilosophy: r.lifePhilosophy || prev.lifePhilosophy,
+          decisionStyle: r.decisionStyle || prev.decisionStyle,
+          geneticAnalysis: r.geneticAnalysis?.determinedType ? r.geneticAnalysis : prev.geneticAnalysis,
+          geneticTypeRaw: r.geneticAnalysis?.determinedType ? autoImportText : prev.geneticTypeRaw,
+      }));
+
+      // Add goals if provided
+      if (r.goals?.length && onUpdateGoals && goals) {
+          const newGoals: Goal[] = r.goals.map((g: { title: string; description?: string; category: string }) => ({
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              title: g.title,
+              description: g.description || '',
+              deadline: '',
+              progress: 0,
+              category: g.category || 'life',
+          }));
+          onUpdateGoals([...goals, ...newGoals]);
+      }
+
+      // Auto-save profile
+      const updatedProfile = {
+          ...formData,
+          mbti: r.mbti || formData.mbti,
+          strengths: r.strengths?.length ? r.strengths : formData.strengths,
+          careerStrengths: r.careerStrengths || formData.careerStrengths,
+          interests: r.interests || formData.interests,
+          values: r.values || formData.values,
+          lifePhilosophy: r.lifePhilosophy || formData.lifePhilosophy,
+          decisionStyle: r.decisionStyle || formData.decisionStyle,
+          geneticAnalysis: r.geneticAnalysis?.determinedType ? r.geneticAnalysis : formData.geneticAnalysis,
+          geneticTypeRaw: r.geneticAnalysis?.determinedType ? autoImportText : formData.geneticTypeRaw,
+      };
+      onUpdateProfile(updatedProfile);
+
+      setAutoImportResult(null);
+      setAutoImportText('');
+      setShowAutoImport(false);
+      showToast('プロフィールを自動入力しました', 'success');
+  };
+
   const generateProfileLink = () => {
       const dataToShare = {
           name: formData.name, mbti: formData.mbti, strengths: formData.strengths,
@@ -302,6 +379,131 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
               </div>
           </div>
       )}
+
+      {/* Auto Import Section */}
+      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-5 rounded-2xl border border-indigo-200/50">
+          <button
+              onClick={() => setShowAutoImport(!showAutoImport)}
+              className="w-full flex items-center justify-between"
+          >
+              <div className="flex items-center space-x-3">
+                  <div className="bg-indigo-100 p-2 rounded-lg">
+                      <Zap size={18} className="text-indigo-600" />
+                  </div>
+                  <div className="text-left">
+                      <h3 className="text-sm font-bold text-navy-900">AI自動入力</h3>
+                      <p className="text-[10px] text-gray-500">コーチング・遺伝子検査・ストレングスファインダーの結果を貼り付けるだけ</p>
+                  </div>
+              </div>
+              <span className="text-gray-400 text-lg">{showAutoImport ? '−' : '+'}</span>
+          </button>
+
+          {showAutoImport && (
+              <div className="mt-4 space-y-3">
+                  <div className="bg-white/80 p-3 rounded-lg text-[10px] text-gray-600 space-y-1">
+                      <p className="font-bold text-navy-900">以下の情報をまとめて貼り付けてください:</p>
+                      <p>• ストレングスファインダーの結果（TOP5の強み）</p>
+                      <p>• 遺伝子検査のレポート（体質タイプ、健康アドバイス等）</p>
+                      <p>• ライフコーチングのメモ（価値観、目標、人生哲学等）</p>
+                      <p>• MBTI診断の結果</p>
+                      <p className="text-indigo-600 font-medium mt-1">※ 全て一度に貼っても、一部だけでもOKです</p>
+                  </div>
+
+                  <textarea
+                      value={autoImportText}
+                      onChange={(e) => setAutoImportText(e.target.value)}
+                      placeholder="ここにテキストを貼り付けてください...&#10;&#10;例:&#10;ストレングスファインダー結果: 1.内省 2.学習欲 3.着想 4.戦略性 5.収集心&#10;&#10;遺伝子検査: 夜型体質、カフェイン感受性高め...&#10;&#10;コーチングメモ: 大切にしている価値観は「成長」と「自由」..."
+                      className="w-full h-40 p-3 bg-white rounded-xl text-xs border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+
+                  <button
+                      onClick={handleAutoImport}
+                      disabled={isAutoImporting || !autoImportText.trim()}
+                      className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center justify-center space-x-2 disabled:opacity-40"
+                  >
+                      {isAutoImporting ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18} />}
+                      <span>{isAutoImporting ? 'AIが解析中...' : 'AIで自動解析する'}</span>
+                  </button>
+
+                  {/* Result Preview */}
+                  {autoImportResult && !autoImportResult.error && (
+                      <div className="bg-white p-4 rounded-xl border border-indigo-200 space-y-3 animate-in zoom-in-95">
+                          <div className="flex items-center space-x-2 mb-2">
+                              <Check size={16} className="text-green-500" />
+                              <span className="text-sm font-bold text-navy-900">解析結果</span>
+                          </div>
+
+                          <p className="text-xs text-gray-600 bg-indigo-50 p-3 rounded-lg leading-relaxed">
+                              {autoImportResult.summary}
+                          </p>
+
+                          <div className="space-y-2 text-xs">
+                              {autoImportResult.mbti && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">MBTI</span>
+                                      <span className="font-bold text-navy-900">{autoImportResult.mbti}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.strengths?.length > 0 && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">ストレングス</span>
+                                      <span className="font-bold text-navy-900">{autoImportResult.strengths.join(', ')}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.values && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">価値観</span>
+                                      <span className="font-bold text-navy-900 text-right max-w-[200px] truncate">{autoImportResult.values}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.lifePhilosophy && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">人生哲学</span>
+                                      <span className="font-bold text-navy-900 text-right max-w-[200px] truncate">{autoImportResult.lifePhilosophy}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.geneticAnalysis?.determinedType && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">遺伝子タイプ</span>
+                                      <span className="font-bold text-navy-900">{autoImportResult.geneticAnalysis.determinedType}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.goals?.length > 0 && (
+                                  <div className="py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">抽出された目標</span>
+                                      <div className="mt-1 space-y-1">
+                                          {autoImportResult.goals.map((g: { title: string; category: string }, i: number) => (
+                                              <div key={i} className="flex items-center space-x-2">
+                                                  <Target size={10} className="text-amber-500" />
+                                                  <span className="text-navy-900 font-medium">{g.title}</span>
+                                                  <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded">{g.category}</span>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+
+                          <div className="flex space-x-2 pt-2">
+                              <button
+                                  onClick={handleApplyAutoImport}
+                                  className="flex-1 bg-green-600 text-white py-2.5 rounded-xl font-bold flex items-center justify-center space-x-2 hover:bg-green-700"
+                              >
+                                  <Check size={16} />
+                                  <span>この内容で保存する</span>
+                              </button>
+                              <button
+                                  onClick={() => setAutoImportResult(null)}
+                                  className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm"
+                              >
+                                  やり直す
+                              </button>
+                          </div>
+                      </div>
+                  )}
+              </div>
+          )}
+      </div>
 
       {/* 1. Basic Info */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
