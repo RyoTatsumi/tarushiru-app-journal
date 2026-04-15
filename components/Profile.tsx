@@ -262,6 +262,30 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
       if (!autoImportResult) return;
       const r = autoImportResult;
 
+      // Build career history from extracted data
+      const newCareerHistory: CareerEntry[] = r.careerHistory?.length
+          ? r.careerHistory.map((c: { company: string; role: string; period?: string; achievements?: string[]; decisionReason?: string }) => ({
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              company: c.company,
+              role: c.role,
+              period: c.period || '',
+              achievements: c.achievements || [],
+              decisionReason: c.decisionReason,
+          }))
+          : [];
+
+      // Merge key achievements
+      const mergedAchievements = r.keyAchievements?.length
+          ? [...(formData.keyAchievements || []), ...r.keyAchievements.filter((a: string) => !(formData.keyAchievements || []).includes(a))]
+          : formData.keyAchievements;
+
+      // Merge career history (append new, don't duplicate)
+      const existingCompanies = (formData.careerHistory || []).map(c => c.company);
+      const mergedCareer = [
+          ...(formData.careerHistory || []),
+          ...newCareerHistory.filter(c => !existingCompanies.includes(c.company)),
+      ];
+
       // Update profile fields (only non-empty values)
       setFormData(prev => ({
           ...prev,
@@ -272,8 +296,11 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           values: r.values || prev.values,
           lifePhilosophy: r.lifePhilosophy || prev.lifePhilosophy,
           decisionStyle: r.decisionStyle || prev.decisionStyle,
+          environment: r.environment || prev.environment,
           geneticAnalysis: r.geneticAnalysis?.determinedType ? r.geneticAnalysis : prev.geneticAnalysis,
           geneticTypeRaw: r.geneticAnalysis?.determinedType ? autoImportText : prev.geneticTypeRaw,
+          careerHistory: mergedCareer,
+          keyAchievements: mergedAchievements,
       }));
 
       // Add goals if provided
@@ -299,8 +326,11 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
           values: r.values || formData.values,
           lifePhilosophy: r.lifePhilosophy || formData.lifePhilosophy,
           decisionStyle: r.decisionStyle || formData.decisionStyle,
+          environment: r.environment || formData.environment,
           geneticAnalysis: r.geneticAnalysis?.determinedType ? r.geneticAnalysis : formData.geneticAnalysis,
           geneticTypeRaw: r.geneticAnalysis?.determinedType ? autoImportText : formData.geneticTypeRaw,
+          careerHistory: mergedCareer,
+          keyAchievements: mergedAchievements,
       };
       onUpdateProfile(updatedProfile);
 
@@ -466,6 +496,52 @@ export const Profile: React.FC<ProfileProps> = ({ profile, onUpdateProfile, onRe
                                   <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
                                       <span className="text-gray-500">遺伝子タイプ</span>
                                       <span className="font-bold text-navy-900">{autoImportResult.geneticAnalysis.determinedType}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.careerStrengths && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">キャリア強み</span>
+                                      <span className="font-bold text-navy-900 text-right max-w-[200px] truncate">{autoImportResult.careerStrengths}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.environment && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">理想の環境</span>
+                                      <span className="font-bold text-navy-900 text-right max-w-[200px] truncate">{autoImportResult.environment}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.decisionStyle && (
+                                  <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">意思決定</span>
+                                      <span className="font-bold text-navy-900 text-right max-w-[200px] truncate">{autoImportResult.decisionStyle}</span>
+                                  </div>
+                              )}
+                              {autoImportResult.careerHistory?.length > 0 && (
+                                  <div className="py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">経歴</span>
+                                      <div className="mt-1 space-y-1">
+                                          {autoImportResult.careerHistory.map((c: { company: string; role: string; period?: string }, i: number) => (
+                                              <div key={i} className="flex items-center space-x-2">
+                                                  <Briefcase size={10} className="text-blue-500" />
+                                                  <span className="text-navy-900 font-medium">{c.company}</span>
+                                                  <span className="text-gray-400">{c.role}</span>
+                                                  {c.period && <span className="text-[9px] text-gray-400">{c.period}</span>}
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                              {autoImportResult.keyAchievements?.length > 0 && (
+                                  <div className="py-1.5 border-b border-gray-100">
+                                      <span className="text-gray-500">主な実績</span>
+                                      <div className="mt-1 space-y-1">
+                                          {autoImportResult.keyAchievements.map((a: string, i: number) => (
+                                              <div key={i} className="flex items-center space-x-2">
+                                                  <Trophy size={10} className="text-amber-500" />
+                                                  <span className="text-navy-900 font-medium">{a}</span>
+                                              </div>
+                                          ))}
+                                      </div>
                                   </div>
                               )}
                               {autoImportResult.goals?.length > 0 && (

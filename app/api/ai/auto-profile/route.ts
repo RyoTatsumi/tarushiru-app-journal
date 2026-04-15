@@ -51,6 +51,34 @@ export async function POST(request: NextRequest) {
               lifeTips: { type: 'string' as const, description: '生活面のアドバイス' },
             },
           },
+          careerHistory: {
+            type: 'array' as const,
+            items: {
+              type: 'object' as const,
+              properties: {
+                company: { type: 'string' as const, description: '会社名・組織名' },
+                role: { type: 'string' as const, description: '役職・ポジション' },
+                period: { type: 'string' as const, description: '在籍期間（例: 2020年4月〜2023年3月）' },
+                achievements: {
+                  type: 'array' as const,
+                  items: { type: 'string' as const },
+                  description: 'その職場での実績・成果',
+                },
+                decisionReason: { type: 'string' as const, description: '入社・転職の理由' },
+              },
+              required: ['company', 'role'],
+            },
+            description: '経歴・職歴。見つからない場合は空配列。',
+          },
+          keyAchievements: {
+            type: 'array' as const,
+            items: { type: 'string' as const },
+            description: '人生全体での主な実績・成果。見つからない場合は空配列。',
+          },
+          environment: {
+            type: 'string' as const,
+            description: '理想の働き方・環境（リモート、チーム規模、裁量など）。見つからない場合は空文字。',
+          },
           goals: {
             type: 'array' as const,
             items: {
@@ -90,11 +118,15 @@ export async function POST(request: NextRequest) {
 7. **意思決定スタイル**: 判断の傾向（直感型、分析型など）
 8. **遺伝子検査結果**: 体質タイプ、健康・仕事・生活のアドバイス
 9. **目標**: 人生目標、仕事目標、在り方（being）目標
+10. **経歴**: 会社名、役職、期間、実績、転職理由
+11. **主な実績**: 人生全体で誇れる成果・実績
+12. **理想の環境**: 理想の働き方・職場環境
 
 ## ルール
 - テキストに含まれていない情報は空文字・空配列・nullで返す（推測で埋めない）
 - 複数の情報源が混在していても、それぞれ正しく振り分ける
 - ストレングスファインダーの強みは日本語名で返す（Gallupの正式な日本語テーマ名）
+- 経歴は会社ごとに分けて、role（役職）・period（期間）・achievements（実績リスト）・decisionReason（入社理由）を構造化
 - 目標のcategoryは: being（在り方・ずっと体現するもの）、life（人生目標）、work（仕事長期）、work_short（仕事短期）
 - summaryに何を抽出できたかを簡潔にまとめる
 
